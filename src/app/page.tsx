@@ -569,20 +569,24 @@ export default function Home() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5">
             {[
-              { title: "Destination Weddings", desc: "Manage multi-day celebrations across hotels — sangeet, mehendi, reception. Group guests by family, allocate VIP suites, and track RSVPs.", icon: Heart, color: "text-pink-500", bg: "bg-pink-50 dark:bg-pink-950/30" },
-              { title: "MICE Conferences", desc: "Coordinate corporate room blocks with negotiated rates. Handle speaker suites, delegate rooms, and networking event passes.", icon: Users, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-950/30" },
-              { title: "Sports Tournaments", desc: "Block rooms for team delegations. Allocate by team, manage meal packages, and generate check-in lists for venue entry.", icon: Zap, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950/30" },
-              { title: "College Fests & Reunions", desc: "Affordable room blocks for student groups. Bulk import attendees, auto-assign rooms, and share booking links via WhatsApp.", icon: MessageSquare, color: "text-green-500", bg: "bg-green-50 dark:bg-green-950/30" },
-              { title: "Religious Pilgrimages", desc: "Group pilgrimage bookings across multiple dharamshalas and hotels. Manage dietary preferences and temple visit add-ons.", icon: Globe, color: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-950/30" },
-              { title: "Film & Production Shoots", desc: "Block rooms near shooting locations. Manage crew tiers — talent suites, crew rooms, equipment storage — with daily rate tracking.", icon: Star, color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-950/30" },
+              { title: "Destination Weddings", desc: "Manage multi-day celebrations across hotels — sangeet, mehendi, reception. Group guests by family, allocate VIP suites, and track RSVPs.", icon: Heart, color: "text-pink-500", bg: "bg-pink-50 dark:bg-pink-950/30", border: "border-pink-100 dark:border-pink-900/30", gradient: "from-pink-500/10 via-transparent" },
+              { title: "MICE Conferences", desc: "Coordinate corporate room blocks with negotiated rates. Handle speaker suites, delegate rooms, and networking event passes.", icon: Users, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-950/30", border: "border-blue-100 dark:border-blue-900/30", gradient: "from-blue-500/10 via-transparent" },
+              { title: "Sports Tournaments", desc: "Block rooms for team delegations. Allocate by team, manage meal packages, and generate check-in lists for venue entry.", icon: Zap, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950/30", border: "border-amber-100 dark:border-amber-900/30", gradient: "from-amber-500/10 via-transparent" },
+              { title: "College Fests & Reunions", desc: "Affordable room blocks for student groups. Bulk import attendees, auto-assign rooms, and share booking links via WhatsApp.", icon: MessageSquare, color: "text-green-500", bg: "bg-green-50 dark:bg-green-950/30", border: "border-green-100 dark:border-green-900/30", gradient: "from-green-500/10 via-transparent" },
+              { title: "Religious Pilgrimages", desc: "Group pilgrimage bookings across multiple dharamshalas and hotels. Manage dietary preferences and temple visit add-ons.", icon: Globe, color: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-950/30", border: "border-purple-100 dark:border-purple-900/30", gradient: "from-purple-500/10 via-transparent" },
+              { title: "Film & Production Shoots", desc: "Block rooms near shooting locations. Manage crew tiers — talent suites, crew rooms, equipment storage — with daily rate tracking.", icon: Star, color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-950/30", border: "border-indigo-100 dark:border-indigo-900/30", gradient: "from-indigo-500/10 via-transparent" },
             ].map((uc) => (
               <TiltCard key={uc.title}>
-                <div className="group rounded-2xl border border-gray-100 dark:border-zinc-700/50 bg-white dark:bg-zinc-800/50 p-5 sm:p-6 hover:shadow-xl hover:-translate-y-1 transition-all duration-500 h-full">
-                  <div className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ${uc.bg} mb-3 group-hover:scale-110 transition-transform duration-300`}>
-                    <uc.icon className={`h-4 w-4 ${uc.color}`} />
+                <div className={`group relative rounded-2xl border ${uc.border} bg-white dark:bg-zinc-800/50 p-6 sm:p-7 hover:shadow-xl hover:-translate-y-1 transition-all duration-500 h-full overflow-hidden`}>
+                  {/* Subtle gradient accent */}
+                  <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl ${uc.gradient} to-transparent rounded-bl-full opacity-60 dark:opacity-30 pointer-events-none`} />
+                  <div className="relative">
+                    <div className={`inline-flex h-11 w-11 items-center justify-center rounded-xl ${uc.bg} mb-4 group-hover:scale-110 transition-transform duration-300 shadow-sm`}>
+                      <uc.icon className={`h-5 w-5 ${uc.color}`} />
+                    </div>
+                    <h3 className="text-lg font-extrabold text-gray-900 dark:text-zinc-50 mb-2 tracking-tight">{uc.title}</h3>
+                    <p className="text-sm text-gray-500 dark:text-zinc-400 leading-relaxed font-medium">{uc.desc}</p>
                   </div>
-                  <h3 className="text-base font-bold text-gray-900 dark:text-zinc-50 mb-1.5 tracking-tight">{uc.title}</h3>
-                  <p className="text-sm text-gray-600 dark:text-zinc-400 leading-relaxed">{uc.desc}</p>
                 </div>
               </TiltCard>
             ))}

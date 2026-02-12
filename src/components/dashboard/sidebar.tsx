@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 import {
   LayoutDashboard,
   CalendarPlus,
@@ -49,6 +50,7 @@ const eventNavigation = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   
   // Auto-detect eventId from URL path (e.g., /dashboard/events/abc123/...)
@@ -244,11 +246,11 @@ export default function Sidebar() {
       <div className="border-t border-gray-100 dark:border-zinc-800 p-4">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-gray-700 to-gray-900 text-sm font-semibold text-white shadow-md">
-            RA
+            {user?.name ? user.name.split(" ").map(n => n[0]).join("") : "U"}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900 dark:text-zinc-100 truncate">Rajesh Kumar</p>
-            <p className="text-[10px] text-gray-500 dark:text-zinc-400 truncate">TBO Travel Solutions</p>
+            <p className="text-sm font-semibold text-gray-900 dark:text-zinc-100 truncate">{user?.name || "User"}</p>
+            <p className="text-[10px] text-gray-500 dark:text-zinc-400 truncate">{user?.role || "TBO Travel Solutions"}</p>
           </div>
           <button
             className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30 transition-colors"
@@ -258,13 +260,13 @@ export default function Sidebar() {
           >
             <HelpCircle className="h-4 w-4" />
           </button>
-          <Link 
-            href="/" 
+          <button
+            onClick={() => { logout(); router.push("/login"); }}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
             title="Sign out"
           >
             <LogOut className="h-4 w-4" />
-          </Link>
+          </button>
         </div>
       </div>
     </>

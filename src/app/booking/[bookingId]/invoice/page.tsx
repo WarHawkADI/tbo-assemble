@@ -25,8 +25,8 @@ interface BookingDetail {
     checkOut: string;
   };
   addOns: {
-    addOn: { name: string; price: number };
-    quantity: number;
+    addOn: { name: string; price: number; isIncluded: boolean };
+    price: number;
   }[];
   calculated: {
     nights: number;
@@ -211,16 +211,16 @@ export default function InvoicePage() {
                 <tr key={i} className="border-b border-zinc-100">
                   <td className="py-3">
                     <p className="font-medium text-zinc-800">{ba.addOn.name}</p>
-                    <p className="text-xs text-zinc-500">Add-on service</p>
+                    <p className="text-xs text-zinc-500">{ba.addOn.isIncluded ? 'Included perk' : 'Add-on service'}</p>
                   </td>
                   <td className="text-center text-sm text-zinc-600">
-                    {ba.quantity}
+                    1
                   </td>
                   <td className="text-right text-sm text-zinc-600">
-                    ₹{ba.addOn.price.toLocaleString("en-IN")}
+                    {ba.price === 0 ? 'Free' : `₹${ba.price.toLocaleString("en-IN")}`}
                   </td>
                   <td className="text-right font-medium text-zinc-800">
-                    ₹{(ba.addOn.price * ba.quantity).toLocaleString("en-IN")}
+                    {ba.price === 0 ? 'Free' : `₹${ba.price.toLocaleString("en-IN")}`}
                   </td>
                 </tr>
               ))}

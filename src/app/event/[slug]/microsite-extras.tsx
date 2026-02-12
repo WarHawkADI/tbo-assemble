@@ -3,6 +3,9 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Share2, Check, Hotel, MessageSquare, ArrowRight } from "lucide-react";
+import { LanguageToggle, T, useI18n } from "@/lib/i18n";
+
+export { LanguageToggle, T };
 
 export function MicrositeCopyLink() {
   const [copied, setCopied] = useState(false);
@@ -52,11 +55,12 @@ export function MicrositeWhatsAppShare({ eventName }: { eventName: string }) {
 export function MicrositeSocialProof({ guestCount }: { guestCount: number }) {
   const [show, setShow] = useState(false);
   const [proofIndex, setProofIndex] = useState(0);
+  const { t } = useI18n();
 
   const proofs = [
-    `${guestCount} guests have already confirmed`,
-    "Rooms are filling up fast!",
-    "Special group rates applied",
+    `${guestCount} ${t("guests_confirmed_count")}`,
+    t("rooms_filling_fast"),
+    t("special_group_rates"),
   ];
 
   useEffect(() => {
@@ -115,14 +119,14 @@ export function MicrositeBottomNav({
           className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-medium text-gray-600 dark:text-zinc-400 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors"
         >
           <MessageSquare className="h-3.5 w-3.5" />
-          Feedback
+          <T k="feedback" />
         </Link>
         <Link
           href={bookUrl}
           className="flex-[2] flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-0.5 shadow-md"
           style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
         >
-          Reserve Room <ArrowRight className="h-3.5 w-3.5" />
+          <T k="reserve_room" /> <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
     </div>

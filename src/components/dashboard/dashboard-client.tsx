@@ -353,116 +353,139 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {events.map((event) => {
             const occupancy = event.totalRooms > 0
               ? Math.round((event.bookedRooms / event.totalRooms) * 100)
               : 0;
+            const checkIn = new Date(event.checkIn);
+            const checkOut = new Date(event.checkOut);
+            const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+            const daysUntil = Math.ceil((checkIn.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            const isUpcoming = daysUntil > 0;
+            const isOngoing = daysUntil <= 0 && daysUntil > -nights;
 
             return (
               <Link key={event.id} href={`/dashboard/events/${event.id}`}>
-                <Card className="border-0 shadow-sm hover:shadow-md transition-all group cursor-pointer">
-                  <CardContent className="p-6">
-                    <div className="flex items-start gap-6">
-                      {/* Color indicator */}
-                      <div
-                        className="w-2 h-full min-h-[80px] rounded-full flex-shrink-0"
-                        style={{ backgroundColor: event.primaryColor }}
-                      />
+                <div className="group relative bg-white dark:bg-zinc-800/60 rounded-2xl border border-zinc-100 dark:border-zinc-700/50 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer h-full">
+                  {/* Top color bar */}
+                  <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${event.primaryColor}, ${event.primaryColor}88)` }} />
 
-                      {/* Event info */}
+                  {/* Header with gradient */}
+                  <div className="relative px-5 pt-4 pb-3">
+                    <div className="absolute top-0 right-0 w-24 h-24 rounded-bl-full opacity-[0.07]" style={{ backgroundColor: event.primaryColor }} />
+                    <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-zinc-100 group-hover:text-[#ff6b35] transition-colors">
-                              {event.name}
-                            </h3>
-                            <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-zinc-400 mt-1">
-                              <span className="flex items-center gap-1">
-                                <MapPin className="h-3.5 w-3.5" /> {event.venue}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Calendar className="h-3.5 w-3.5" />
-                                {formatDate(event.checkIn)} - {formatDate(event.checkOut)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant={getStatusVariant(event.status)}>
-                              {event.status}
-                            </Badge>
-                            <Badge variant="secondary">{getTypeLabel(event.type)}</Badge>
-                          </div>
+                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                          <Badge variant={getStatusVariant(event.status)} className="text-[10px]">
+                            {event.status}
+                          </Badge>
+                          <Badge variant="secondary" className="text-[10px]">{getTypeLabel(event.type)}</Badge>
+                          {isOngoing && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                              <span className="relative flex h-1.5 w-1.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" /><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" /></span>
+                              LIVE
+                            </span>
+                          )}
                         </div>
-
-                        {/* Stats row */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
-                          <div>
-                            <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Guests</p>
-                            <p className="text-sm font-semibold">
-                              {event.confirmedGuests}/{event.guestCount}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Revenue</p>
-                            <p className="text-sm font-semibold text-emerald-600">
-                              {formatCurrency(event.totalRevenue)}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Rooms</p>
-                            <p className="text-sm font-semibold">
-                              {event.bookedRooms}/{event.totalRooms}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Occupancy</p>
-                            <div className="flex items-center gap-2">
-                              <Progress value={occupancy} className="h-2 flex-1" />
-                              <span className="text-xs font-medium">{occupancy}%</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Quick Actions */}
-                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-zinc-800">
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              const url = `${window.location.origin}/event/${event.slug}`;
-                              navigator.clipboard.writeText(url);
-                            }}
-                            className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
-                            title="Copy microsite link"
-                            aria-label="Copy event microsite link"
-                          >
-                            <Globe className="h-3 w-3" /> Copy Link
-                          </button>
-                          <span className="text-gray-200 dark:text-zinc-700">|</span>
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              fetch(`/api/events/${event.id}/clone`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ name: `${event.name} (Copy)` }),
-                              }).then(() => refreshData());
-                            }}
-                            className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
-                            title="Clone this event"
-                            aria-label="Clone event"
-                          >
-                            <Copy className="h-3 w-3" /> Clone
-                          </button>
-                        </div>
+                        <h3 className="text-base font-bold text-gray-900 dark:text-zinc-100 group-hover:text-[#ff6b35] transition-colors truncate tracking-tight">
+                          {event.name}
+                        </h3>
                       </div>
-
-                      <ArrowRight className="h-5 w-5 text-gray-300 dark:text-zinc-600 group-hover:text-[#ff6b35] group-hover:translate-x-1 transition-all flex-shrink-0 mt-2" />
+                      <ArrowRight className="h-4 w-4 text-gray-300 dark:text-zinc-600 group-hover:text-[#ff6b35] group-hover:translate-x-1 transition-all flex-shrink-0 mt-1" />
                     </div>
-                  </CardContent>
-                </Card>
+
+                    {/* Meta */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px] text-gray-500 dark:text-zinc-400">
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3" /> {event.venue}, {event.location}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {formatDate(event.checkIn)} · {nights}N
+                      </span>
+                      {isUpcoming && (
+                        <span className="font-semibold" style={{ color: event.primaryColor }}>
+                          in {daysUntil}d
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-3 gap-px mx-5 mb-3 rounded-xl overflow-hidden border border-zinc-100 dark:border-zinc-700/50">
+                    <div className="bg-zinc-50/80 dark:bg-zinc-900/40 px-3 py-2.5 text-center">
+                      <p className="text-[10px] font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider">Guests</p>
+                      <p className="text-sm font-extrabold text-gray-900 dark:text-zinc-100 mt-0.5">
+                        <span style={{ color: event.primaryColor }}>{event.confirmedGuests}</span>
+                        <span className="text-gray-300 dark:text-zinc-600 font-medium">/{event.guestCount}</span>
+                      </p>
+                    </div>
+                    <div className="bg-zinc-50/80 dark:bg-zinc-900/40 px-3 py-2.5 text-center">
+                      <p className="text-[10px] font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider">Revenue</p>
+                      <p className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                        {formatCurrency(event.totalRevenue)}
+                      </p>
+                    </div>
+                    <div className="bg-zinc-50/80 dark:bg-zinc-900/40 px-3 py-2.5 text-center">
+                      <p className="text-[10px] font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider">Rooms</p>
+                      <p className="text-sm font-extrabold text-gray-900 dark:text-zinc-100 mt-0.5">
+                        {event.bookedRooms}<span className="text-gray-300 dark:text-zinc-600 font-medium">/{event.totalRooms}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Occupancy Bar */}
+                  <div className="px-5 pb-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-semibold text-gray-400 dark:text-zinc-500">Occupancy</span>
+                      <span className="text-[10px] font-bold" style={{ color: occupancy > 80 ? '#ef4444' : occupancy > 50 ? '#f59e0b' : event.primaryColor }}>{occupancy}%</span>
+                    </div>
+                    <div className="h-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-700"
+                        style={{
+                          width: `${occupancy}%`,
+                          background: occupancy > 80 ? '#ef4444' : occupancy > 50 ? '#f59e0b' : `linear-gradient(90deg, ${event.primaryColor}, ${event.primaryColor}aa)`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Quick Actions */}
+                  <div className="flex items-center gap-3 px-5 py-2.5 border-t border-zinc-100 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/30">
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const url = `${window.location.origin}/event/${event.slug}`;
+                        navigator.clipboard.writeText(url);
+                      }}
+                      className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-gray-400 dark:text-zinc-500 hover:text-[#ff6b35] dark:hover:text-[#ff6b35] transition-colors"
+                      title="Copy microsite link"
+                      aria-label="Copy event microsite link"
+                    >
+                      <Globe className="h-3 w-3" /> Copy Link
+                    </button>
+                    <span className="text-gray-200 dark:text-zinc-700">·</span>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        fetch(`/api/events/${event.id}/clone`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ name: `${event.name} (Copy)` }),
+                        }).then(() => refreshData());
+                      }}
+                      className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-gray-400 dark:text-zinc-500 hover:text-[#ff6b35] dark:hover:text-[#ff6b35] transition-colors"
+                      title="Clone this event"
+                      aria-label="Clone event"
+                    >
+                      <Copy className="h-3 w-3" /> Clone
+                    </button>
+                  </div>
+                </div>
               </Link>
             );
           })}

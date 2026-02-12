@@ -4,7 +4,7 @@ import Link from "next/link";
 import { formatDate, formatCurrency, daysUntil } from "@/lib/utils";
 import { Calendar, MapPin, Hotel, Users, ArrowRight, Sparkles, Star, Check, Heart, Clock, Share2, MessageSquare, AlertTriangle, Gift, Mail, ListChecks } from "lucide-react";
 import { Countdown } from "@/components/ui/countdown";
-import { MicrositeBottomNav, MicrositeSocialProof, MicrositeCopyLink, MicrositeWhatsAppShare } from "./microsite-extras";
+import { MicrositeBottomNav, MicrositeSocialProof, MicrositeCopyLink, MicrositeWhatsAppShare, LanguageToggle, T } from "./microsite-extras";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -65,12 +65,12 @@ export default async function MicrositePage({
       {/* Event Status Banner */}
       {isPast && (
         <div className="fixed top-0 left-0 right-0 z-[60] bg-gray-900 text-white text-center py-2 text-xs font-medium">
-          This event has concluded. Bookings are no longer available.
+          <T k="event_concluded" />
         </div>
       )}
       {!isUpcoming && !isPast && (
         <div className="fixed top-0 left-0 right-0 z-[60] text-white text-center py-2 text-xs font-medium" style={{ backgroundColor: event.primaryColor }}>
-          🎉 Event is happening now! Check in at the venue.
+          🎉 <T k="event_happening" />
         </div>
       )}
 
@@ -93,6 +93,7 @@ export default async function MicrositePage({
               </div>
             </div>
             <div className="flex items-center gap-2.5">
+              <LanguageToggle />
               <MicrositeWhatsAppShare eventName={event.name} />
               <MicrositeCopyLink />
               <Link
@@ -100,7 +101,7 @@ export default async function MicrositePage({
                 className="px-5 lg:px-6 py-2.5 lg:py-2.5 rounded-lg lg:rounded-xl text-sm font-semibold text-white shadow-md hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5"
                 style={{ background: `linear-gradient(135deg, ${event.primaryColor}, ${event.accentColor})` }}
               >
-                Reserve Now
+                <T k="reserve_now" />
               </Link>
             </div>
           </div>
@@ -166,7 +167,7 @@ export default async function MicrositePage({
           </div>
 
           <p className="text-sm uppercase tracking-[0.3em] mb-4 font-semibold" style={{ color: event.accentColor }}>
-            You&apos;re Invited
+            <T k="youre_invited" />
           </p>
           
           <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold mb-6 tracking-tight text-gray-900 dark:text-zinc-100">
@@ -189,7 +190,7 @@ export default async function MicrositePage({
             className="group inline-flex items-center gap-2.5 px-6 sm:px-8 lg:px-10 py-3 sm:py-3.5 lg:py-4 rounded-xl lg:rounded-2xl text-sm sm:text-base lg:text-lg font-semibold text-white shadow-xl hover:shadow-2xl transition-all duration-200 hover:-translate-y-1"
             style={{ background: `linear-gradient(135deg, ${event.primaryColor}, ${event.accentColor})`, boxShadow: `0 12px 24px -6px ${event.primaryColor}40` }}
           >
-            Book Your Stay
+            <T k="book_your_stay" />
             <ArrowRight className="h-4 w-4 lg:h-5 lg:w-5 transition-transform group-hover:translate-x-1" />
           </Link>
 
@@ -201,7 +202,7 @@ export default async function MicrositePage({
 
         {/* Scroll Indicator */}
         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 opacity-40">
-          <span className="text-xs uppercase tracking-widest text-gray-400">Scroll</span>
+          <span className="text-xs uppercase tracking-widest text-gray-400"><T k="scroll" /></span>
           <div className="w-px h-8 bg-gradient-to-b from-gray-300 to-transparent" />
         </div>
       </header>
@@ -222,7 +223,7 @@ export default async function MicrositePage({
                   {totalRoomsAvailable}
                 </div>
                 <p className="text-sm text-gray-500 font-medium flex items-center justify-center gap-2">
-                  <Hotel className="h-4 w-4" /> Rooms Available
+                  <Hotel className="h-4 w-4" /> <T k="rooms_available" />
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -237,7 +238,7 @@ export default async function MicrositePage({
                   {confirmedGuests}
                 </div>
                 <p className="text-sm text-gray-500 font-medium flex items-center justify-center gap-2">
-                  <Users className="h-4 w-4" /> Guests Confirmed
+                  <Users className="h-4 w-4" /> <T k="guests_confirmed" />
                 </p>
               </div>
               <div className="text-center group cursor-default border-t sm:border-t-0 pt-6 sm:pt-0">
@@ -248,7 +249,7 @@ export default async function MicrositePage({
                   {includedPerks}
                 </div>
                 <p className="text-sm text-gray-500 font-medium flex items-center justify-center gap-2">
-                  <Sparkles className="h-4 w-4" /> Included Perks
+                  <Sparkles className="h-4 w-4" /> <T k="included_perks" />
                 </p>
               </div>
             </div>
@@ -266,23 +267,23 @@ export default async function MicrositePage({
             >
               <Gift className="h-5 w-5 text-white" />
             </div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-zinc-100 mb-2">Group Discounts</h2>
-            <p className="text-gray-500 dark:text-zinc-400 text-sm max-w-md mx-auto">Book more rooms and save more — exclusive group rates for this event</p>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-zinc-100 mb-2"><T k="group_discounts" /></h2>
+            <p className="text-gray-500 dark:text-zinc-400 text-sm max-w-md mx-auto"><T k="group_discount_desc" /></p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {event.discountRules.map((rule, idx) => (
               <div key={rule.id} className={`relative rounded-xl border p-5 text-center transition-all hover:shadow-lg ${idx === event.discountRules.length - 1 ? 'border-2 shadow-md' : 'border-gray-100 dark:border-zinc-700'}`} style={idx === event.discountRules.length - 1 ? { borderColor: event.primaryColor } : {}}>
                 {idx === event.discountRules.length - 1 && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: event.primaryColor }}>
-                    BEST VALUE
+                    <T k="best_value" />
                   </div>
                 )}
                 <div className="text-3xl font-bold mb-1" style={{ color: event.primaryColor }}>{rule.discountPct}%</div>
-                <p className="text-xs text-gray-500 dark:text-zinc-400 font-medium uppercase tracking-wider mb-2">Discount</p>
-                <p className="text-sm text-gray-700 dark:text-zinc-300 font-medium">Book {rule.minRooms}+ rooms</p>
+                <p className="text-xs text-gray-500 dark:text-zinc-400 font-medium uppercase tracking-wider mb-2"><T k="discount" /></p>
+                <p className="text-sm text-gray-700 dark:text-zinc-300 font-medium"><T k="book_rooms" /> {rule.minRooms}+ <T k="rooms" /></p>
                 {lowestRate > 0 && (
                   <p className="text-xs text-gray-400 dark:text-zinc-500 mt-2">
-                    From {formatCurrency(lowestRate * (1 - rule.discountPct / 100))}/night
+                    <T k="from_price" /> {formatCurrency(lowestRate * (1 - rule.discountPct / 100))}/<T k="per_night" />
                   </p>
                 )}
               </div>
@@ -300,8 +301,8 @@ export default async function MicrositePage({
                 <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900 dark:text-zinc-100 text-sm">Booking Deadlines</h3>
-                <p className="text-xs text-gray-500 dark:text-zinc-400">Book before these dates to avoid penalties</p>
+                <h3 className="font-semibold text-gray-900 dark:text-zinc-100 text-sm"><T k="booking_deadlines" /></h3>
+                <p className="text-xs text-gray-500 dark:text-zinc-400"><T k="book_before_dates" /></p>
               </div>
             </div>
             <div className="space-y-2">{event.attritionRules.map((rule) => {
@@ -311,10 +312,10 @@ export default async function MicrositePage({
                 <div key={rule.id} className={`flex items-center justify-between p-3 rounded-xl ${isPassed ? 'bg-red-50 dark:bg-red-950/20' : 'bg-white dark:bg-zinc-900'} border border-gray-100 dark:border-zinc-700`}>
                   <div>
                     <p className={`text-sm font-medium ${isPassed ? 'text-red-600 dark:text-red-400 line-through' : 'text-gray-900 dark:text-zinc-100'}`}>{formatDate(rule.releaseDate)}</p>
-                    <p className="text-xs text-gray-500 dark:text-zinc-400">{isPassed ? 'Deadline passed' : `${d} days remaining`}</p>
+                    <p className="text-xs text-gray-500 dark:text-zinc-400">{isPassed ? <T k="deadline_passed" /> : <>{d} <T k="days_remaining" /></>}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-zinc-100">Release {rule.releasePercent}%</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-zinc-100"><T k="release" /> {rule.releasePercent}%</p>
                     {rule.description && <p className="text-xs text-gray-500 dark:text-zinc-400">{rule.description}</p>}
                   </div>
                 </div>
@@ -333,8 +334,8 @@ export default async function MicrositePage({
           >
             <Hotel className="h-5 w-5 lg:h-6 lg:w-6 text-white" />
           </div>
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-zinc-100 mb-2">Choose Your Room</h2>
-          <p className="text-gray-500 dark:text-zinc-400 text-sm lg:text-base max-w-md mx-auto">Select your preferred accommodation for the event</p>
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-zinc-100 mb-2"><T k="choose_your_room" /></h2>
+          <p className="text-gray-500 dark:text-zinc-400 text-sm lg:text-base max-w-md mx-auto"><T k="select_accommodation" /></p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -361,28 +362,28 @@ export default async function MicrositePage({
                         <h3 className="text-lg lg:text-xl font-bold text-gray-900 dark:text-zinc-100">{room.roomType}</h3>
                         {isLimited && (
                           <span className="px-2 py-0.5 rounded-full text-[10px] lg:text-xs font-semibold bg-amber-100 text-amber-700 flex items-center gap-1">
-                            <Clock className="h-2.5 w-2.5 lg:h-3 lg:w-3" /> {available} left
+                            <Clock className="h-2.5 w-2.5 lg:h-3 lg:w-3" /> {available} <T k="left" />
                           </span>
                         )}
                         {isSoldOut && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] lg:text-xs font-semibold bg-red-100 text-red-600">Sold Out</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] lg:text-xs font-semibold bg-red-100 text-red-600"><T k="sold_out" /></span>
                         )}
                       </div>
                       {room.hotelName && (
                         <p className="text-xs font-medium mb-0.5" style={{ color: event.primaryColor }}>{room.hotelName}</p>
                       )}
                       <p className="text-gray-500 dark:text-zinc-400 text-xs lg:text-sm">
-                        {room.floor && `Floor ${room.floor}`}
+                        {room.floor && <><T k="floor" /> {room.floor}</>}
                         {room.floor && room.wing && ' • '}
-                        {room.wing && `${room.wing} Wing`}
-                        {!room.floor && !room.wing && 'Standard accommodation'}
+                        {room.wing && <>{room.wing} <T k="wing" /></>}
+                        {!room.floor && !room.wing && <T k="standard_accommodation" />}
                       </p>
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-xl lg:text-2xl font-bold" style={{ color: event.primaryColor }}>
                         {formatCurrency(room.rate)}
                       </div>
-                      <p className="text-[10px] lg:text-xs text-gray-400 font-medium">per night</p>
+                      <p className="text-[10px] lg:text-xs text-gray-400 font-medium"><T k="per_night" /></p>
                     </div>
                   </div>
 
@@ -395,9 +396,9 @@ export default async function MicrositePage({
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                           </span>
-                          {available} of {room.totalQty} available
+                          {available} <T k="of" /> {room.totalQty} <T k="available" />
                         </span>
-                        <span className="text-[10px] text-gray-400">{occupancyPct}% booked</span>
+                        <span className="text-[10px] text-gray-400">{occupancyPct}% <T k="booked" /></span>
                       </div>
                       <div className="h-1.5 bg-gray-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                         <div
@@ -417,7 +418,7 @@ export default async function MicrositePage({
                       className="mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl text-xs lg:text-sm font-semibold text-white transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
                       style={{ background: `linear-gradient(135deg, ${event.primaryColor}, ${event.accentColor})` }}
                     >
-                      Select Room <ArrowRight className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
+                      <T k="select_room" /> <ArrowRight className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
                     </Link>
                   )}
                 </div>
@@ -438,8 +439,8 @@ export default async function MicrositePage({
               >
                 <Sparkles className="h-5 w-5 lg:h-6 lg:w-6 text-white" />
               </div>
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-zinc-100 mb-2">Perks & Experiences</h2>
-              <p className="text-gray-500 dark:text-zinc-400 text-sm lg:text-base max-w-md mx-auto">Enhance your stay with these curated offerings</p>
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-zinc-100 mb-2"><T k="perks_experiences" /></h2>
+              <p className="text-gray-500 dark:text-zinc-400 text-sm lg:text-base max-w-md mx-auto"><T k="enhance_stay" /></p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
@@ -470,7 +471,7 @@ export default async function MicrositePage({
                         addon.isIncluded ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400' : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300'
                       }`}
                     >
-                      {addon.isIncluded ? 'Included' : formatCurrency(addon.price)}
+                      {addon.isIncluded ? <T k="included" /> : formatCurrency(addon.price)}
                     </div>
                   </div>
                 </div>
@@ -483,14 +484,14 @@ export default async function MicrositePage({
       {/* Final CTA */}
       <section className="py-16 sm:py-20 lg:py-24">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-zinc-100 mb-3">Ready to Join Us?</h2>
-          <p className="text-gray-500 dark:text-zinc-400 mb-8 text-sm lg:text-base">Secure your spot at {event.name}. Limited rooms available.</p>
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-zinc-100 mb-3"><T k="ready_to_join" /></h2>
+          <p className="text-gray-500 dark:text-zinc-400 mb-8 text-sm lg:text-base"><T k="secure_your_spot" /> {event.name}. <T k="limited_rooms" /></p>
           <Link
             href={`/event/${slug}/book`}
             className="group inline-flex items-center gap-2.5 px-6 sm:px-8 lg:px-10 py-3 sm:py-3.5 lg:py-4 rounded-xl lg:rounded-2xl text-sm sm:text-base lg:text-lg font-semibold text-white shadow-xl hover:shadow-2xl transition-all duration-200 hover:-translate-y-1"
             style={{ background: `linear-gradient(135deg, ${event.primaryColor}, ${event.accentColor})`, boxShadow: `0 12px 24px -6px ${event.primaryColor}40` }}
           >
-            Book Your Room Now
+            <T k="book_room_now" />
             <ArrowRight className="h-4 w-4 lg:h-5 lg:w-5 transition-transform group-hover:translate-x-1" />
           </Link>
         </div>
@@ -517,8 +518,8 @@ export default async function MicrositePage({
               </div>
               <span className="font-semibold text-gray-900 dark:text-zinc-100 text-sm lg:text-base">TBO Assemble</span>
             </div>
-            <p className="text-xs lg:text-sm text-gray-400 dark:text-zinc-500">The Operating System for Group Travel</p>
-            <p className="text-[10px] text-gray-300 dark:text-zinc-600 mt-2">Powered by TBO.com · {event.name}</p>
+            <p className="text-xs lg:text-sm text-gray-400 dark:text-zinc-500"><T k="the_os_for_group_travel" /></p>
+            <p className="text-[10px] text-gray-300 dark:text-zinc-600 mt-2"><T k="powered_by" /> · {event.name}</p>
           </div>
         </div>
       </footer>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import prisma from "@/lib/db";
 import { ArrowLeft } from "lucide-react";
 import { ComparativeAnalytics } from "@/components/dashboard/comparative-analytics";
+import { PdfExportButton } from "@/components/dashboard/pdf-export";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -65,13 +66,16 @@ export default async function AnalyticsPage() {
         <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
         Back to Dashboard
       </Link>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">
-          Analytics
-        </h1>
-        <p className="text-zinc-500 dark:text-zinc-400 text-sm mt-1">
-          Compare performance across all your events
-        </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">
+            Analytics
+          </h1>
+          <p className="text-zinc-500 dark:text-zinc-400 text-sm mt-1">
+            Compare performance across all your events
+          </p>
+        </div>
+        <PdfExportButton events={comparisons} />
       </div>
 
       <ComparativeAnalytics events={comparisons} />

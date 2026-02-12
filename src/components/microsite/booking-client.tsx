@@ -154,7 +154,7 @@ export default function BookingClient({ event }: { event: EventData }) {
 
   if (isBooked) {
     return (
-      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-4 lg:p-6" style={{ zoom: 0.8 }}>
+      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-4 lg:p-6">
         {/* Background Effects */}
         <div 
           className="fixed inset-0 pointer-events-none"
@@ -319,7 +319,7 @@ export default function BookingClient({ event }: { event: EventData }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#fafafa] dark:bg-zinc-950" style={{ zoom: 0.8 }}>
+    <div className="min-h-screen bg-[#fafafa] dark:bg-zinc-950">
       {/* Confetti on successful booking */}
       <ConfettiExplosion active={confetti.active} onComplete={confetti.reset} />
       
