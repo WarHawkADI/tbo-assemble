@@ -1,0 +1,887 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+
+export async function POST() {
+  try {
+    console.log("🌱 Seeding TBO Assemble database...\n");
+
+    // Clean existing data (order matters for foreign keys)
+    await prisma.bookingAddOn.deleteMany();
+    await prisma.nudge.deleteMany();
+    await prisma.feedback.deleteMany();
+    await prisma.activityLog.deleteMany();
+    await prisma.waitlist.deleteMany();
+    await prisma.discountRule.deleteMany();
+    await prisma.booking.deleteMany();
+    await prisma.guest.deleteMany();
+    await prisma.addOn.deleteMany();
+    await prisma.attritionRule.deleteMany();
+    await prisma.roomBlock.deleteMany();
+    await prisma.event.deleteMany();
+    await prisma.agent.deleteMany();
+
+    // Create Agent
+    const agent = await prisma.agent.create({
+      data: {
+        name: "Rajesh Kumar",
+        email: "agent@tbo.com",
+        password: "demo123",
+        company: "TBO Travel Solutions",
+      },
+    });
+
+    // Create Event - Wedding
+    const wedding = await prisma.event.create({
+      data: {
+        name: "The Sharma-Patel Wedding",
+        slug: "sharma-patel-wedding-2026",
+        type: "wedding",
+        venue: "The Grand Hyatt Resort & Spa",
+        location: "Udaipur, Rajasthan",
+        checkIn: new Date("2026-04-10"),
+        checkOut: new Date("2026-04-13"),
+        description:
+          "A grand celebration of love uniting the Sharma and Patel families at the magnificent Grand Hyatt Resort & Spa, Udaipur.",
+        primaryColor: "#8B1A4A",
+        secondaryColor: "#FFF5F5",
+        accentColor: "#D4A574",
+        agentId: agent.id,
+        status: "active",
+      },
+    });
+
+    // Create Room Blocks
+    const deluxe = await prisma.roomBlock.create({
+      data: {
+        roomType: "Deluxe Room",
+        description: "Spacious room with garden view, king bed, and modern amenities",
+        rate: 12000,
+        totalQty: 30,
+        bookedQty: 18,
+        floor: "2-3",
+        wing: "East Wing",
+        hotelName: "The Grand Hyatt Resort & Spa",
+        eventId: wedding.id,
+      },
+    });
+
+    const premium = await prisma.roomBlock.create({
+      data: {
+        roomType: "Premium Suite",
+        description: "Luxurious suite with lake view, separate living area, and premium amenities",
+        rate: 22000,
+        totalQty: 15,
+        bookedQty: 8,
+        floor: "4",
+        wing: "East Wing",
+        hotelName: "The Grand Hyatt Resort & Spa",
+        eventId: wedding.id,
+      },
+    });
+
+    const royal = await prisma.roomBlock.create({
+      data: {
+        roomType: "Royal Suite",
+        description: "Ultra-luxury suite with panoramic lake view, private balcony, and butler service",
+        rate: 45000,
+        totalQty: 5,
+        bookedQty: 3,
+        floor: "5",
+        wing: "Tower",
+        hotelName: "Taj Lake Palace",
+        eventId: wedding.id,
+      },
+    });
+
+    // Create Add-Ons
+    const addOns = await Promise.all([
+      prisma.addOn.create({
+        data: { name: "Airport Pickup (Group)", price: 1500, isIncluded: false, eventId: wedding.id },
+      }),
+      prisma.addOn.create({
+        data: { name: "Welcome Dinner", price: 0, isIncluded: true, eventId: wedding.id },
+      }),
+      prisma.addOn.create({
+        data: { name: "Mehendi Ceremony Pass", price: 0, isIncluded: true, eventId: wedding.id },
+      }),
+      prisma.addOn.create({
+        data: { name: "Gala Night Pass", price: 2500, isIncluded: false, eventId: wedding.id },
+      }),
+      prisma.addOn.create({
+        data: { name: "Spa Package (60 min)", price: 3000, isIncluded: false, eventId: wedding.id },
+      }),
+      prisma.addOn.create({
+        data: { name: "Heritage City Tour", price: 2000, isIncluded: false, eventId: wedding.id },
+      }),
+    ]);
+
+    // Create Attrition Rules
+    await Promise.all([
+      prisma.attritionRule.create({
+        data: {
+          releaseDate: new Date("2026-03-10"),
+          releasePercent: 30,
+          description: "Release 30% of unsold rooms 30 days prior",
+          eventId: wedding.id,
+        },
+      }),
+      prisma.attritionRule.create({
+        data: {
+          releaseDate: new Date("2026-03-25"),
+          releasePercent: 50,
+          description: "Release 50% of remaining unsold rooms 15 days prior",
+          eventId: wedding.id,
+        },
+      }),
+      prisma.attritionRule.create({
+        data: {
+          releaseDate: new Date("2026-04-03"),
+          releasePercent: 100,
+          description: "Release all unsold rooms 7 days prior — full attrition penalty applies",
+          eventId: wedding.id,
+        },
+      }),
+    ]);
+
+    // Create Guests
+    const brideGuests = [
+      { name: "Priya Sharma", status: "confirmed", group: "Bride Side", email: "priya@email.com", phone: "+91 98765 43210", proximityRequest: null as string | null },
+      { name: "Anita Sharma", status: "confirmed", group: "Bride Side", email: "anita@email.com", phone: "+91 98765 43211", proximityRequest: "Near Priya Sharma" },
+      { name: "Rajiv Sharma", status: "confirmed", group: "Bride Side", email: "rajiv@email.com", phone: null as string | null, proximityRequest: "Near Anita Sharma" },
+      { name: "Meena Sharma", status: "confirmed", group: "Bride Side", email: null as string | null, phone: "+91 98765 43213", proximityRequest: null as string | null },
+      { name: "Sanjay Gupta", status: "confirmed", group: "Bride Side", email: "sanjay@email.com", phone: null as string | null, proximityRequest: null as string | null },
+      { name: "Neha Verma", status: "invited", group: "Bride Side", email: "neha@email.com", phone: "+91 98765 43215", proximityRequest: "Near Priya Sharma" },
+      { name: "Vikram Sharma", status: "invited", group: "Bride Side", email: "vikram@email.com", phone: null as string | null, proximityRequest: null as string | null },
+      { name: "Ritu Agarwal", status: "invited", group: "Bride Side", email: null as string | null, phone: "+91 98765 43217", proximityRequest: null as string | null },
+    ];
+
+    const groomGuests = [
+      { name: "Amit Patel", status: "confirmed", group: "Groom Side", email: "amit@email.com", phone: "+91 87654 32100", proximityRequest: null as string | null },
+      { name: "Sunita Patel", status: "confirmed", group: "Groom Side", email: "sunita@email.com", phone: "+91 87654 32101", proximityRequest: "Near Amit Patel" },
+      { name: "Kiran Patel", status: "confirmed", group: "Groom Side", email: "kiran@email.com", phone: null as string | null, proximityRequest: null as string | null },
+      { name: "Deepak Joshi", status: "confirmed", group: "Groom Side", email: "deepak@email.com", phone: "+91 87654 32103", proximityRequest: null as string | null },
+      { name: "Pooja Mehta", status: "confirmed", group: "Groom Side", email: null as string | null, phone: "+91 87654 32104", proximityRequest: "Near Kiran Patel" },
+      { name: "Rohit Shah", status: "invited", group: "Groom Side", email: "rohit@email.com", phone: null as string | null, proximityRequest: null as string | null },
+      { name: "Anjali Desai", status: "invited", group: "Groom Side", email: "anjali@email.com", phone: "+91 87654 32106", proximityRequest: null as string | null },
+    ];
+
+    const vipGuests = [
+      { name: "Mr. Harish Sharma", status: "confirmed", group: "VIP", email: "harish@email.com", phone: "+91 99999 11111", proximityRequest: null as string | null },
+      { name: "Mrs. Kamla Sharma", status: "confirmed", group: "VIP", email: null as string | null, phone: "+91 99999 22222", proximityRequest: "Near Mr. Harish Sharma" },
+      { name: "Mr. Suresh Patel", status: "confirmed", group: "VIP", email: "suresh@email.com", phone: "+91 88888 11111", proximityRequest: null as string | null },
+      { name: "Mrs. Geeta Patel", status: "confirmed", group: "VIP", email: null as string | null, phone: "+91 88888 22222", proximityRequest: "Near Mr. Suresh Patel" },
+      { name: "Pandit Ravi Shankar", status: "confirmed", group: "VIP", email: null as string | null, phone: "+91 77777 11111", proximityRequest: null as string | null },
+    ];
+
+    const friendGuests = [
+      { name: "Aditya Rai", status: "confirmed", group: "Friends", email: "aditya@email.com", phone: "+91 76543 21000", proximityRequest: null as string | null },
+      { name: "Sneha Kapoor", status: "confirmed", group: "Friends", email: "sneha@email.com", phone: null as string | null, proximityRequest: "Near Aditya Rai" },
+      { name: "Arjun Singh", status: "invited", group: "Friends", email: "arjun@email.com", phone: "+91 76543 21002", proximityRequest: null as string | null },
+      { name: "Divya Nair", status: "invited", group: "Friends", email: "divya@email.com", phone: null as string | null, proximityRequest: null as string | null },
+      { name: "Rahul Mehta", status: "invited", group: "Friends", email: "rahul@email.com", phone: "+91 76543 21004", proximityRequest: "Near Arjun Singh" },
+      { name: "Tanvi Jain", status: "cancelled", group: "Friends", email: "tanvi@email.com", phone: null as string | null, proximityRequest: null as string | null },
+    ];
+
+    const allGuests = [...brideGuests, ...groomGuests, ...vipGuests, ...friendGuests];
+
+    const createdGuests = [];
+    for (const guestData of allGuests) {
+      const guest = await prisma.guest.create({
+        data: {
+          name: guestData.name,
+          email: guestData.email || null,
+          phone: guestData.phone || null,
+          group: guestData.group,
+          status: guestData.status,
+          proximityRequest: guestData.proximityRequest || null,
+          eventId: wedding.id,
+        },
+      });
+      createdGuests.push(guest);
+    }
+
+    // Create Bookings for confirmed guests
+    const confirmedGuests = createdGuests.filter((g) => g.status === "confirmed");
+    const roomOptions = [deluxe, deluxe, deluxe, premium, premium, royal];
+
+    for (let i = 0; i < confirmedGuests.length; i++) {
+      const guest = confirmedGuests[i];
+      const room = roomOptions[i % roomOptions.length];
+      const nights = 3;
+      const roomCost = room.rate * nights;
+      const addOnCost = i % 3 === 0 ? 1500 : i % 3 === 1 ? 2500 : 0;
+
+      const booking = await prisma.booking.create({
+        data: {
+          guestId: guest.id,
+          eventId: wedding.id,
+          roomBlockId: room.id,
+          totalAmount: roomCost + addOnCost,
+          status: "confirmed",
+        },
+      });
+
+      if (addOnCost === 1500) {
+        await prisma.bookingAddOn.create({
+          data: { bookingId: booking.id, addOnId: addOns[0].id, price: 1500 },
+        });
+      } else if (addOnCost === 2500) {
+        await prisma.bookingAddOn.create({
+          data: { bookingId: booking.id, addOnId: addOns[3].id, price: 2500 },
+        });
+      }
+    }
+
+    // Allocate VIP guests
+    const vipCreated = createdGuests.filter((g) => g.group === "VIP");
+    for (const vip of vipCreated) {
+      await prisma.guest.update({
+        where: { id: vip.id },
+        data: { allocatedFloor: "5", allocatedWing: "Tower" },
+      });
+    }
+
+    // Create MICE event
+    const conference = await prisma.event.create({
+      data: {
+        name: "TechConnect Summit 2026",
+        slug: "techconnect-summit-2026",
+        type: "mice",
+        venue: "JW Marriott Convention Centre",
+        location: "Mumbai, Maharashtra",
+        checkIn: new Date("2026-05-15"),
+        checkOut: new Date("2026-05-18"),
+        description:
+          "Annual technology conference bringing together industry leaders for 3 days of innovation.",
+        primaryColor: "#1e40af",
+        secondaryColor: "#eff6ff",
+        accentColor: "#3b82f6",
+        agentId: agent.id,
+        status: "active",
+      },
+    });
+
+    await prisma.roomBlock.createMany({
+      data: [
+        { roomType: "Business Room", rate: 8000, totalQty: 50, bookedQty: 22, floor: "3-5", wing: "North Wing", hotelName: "JW Marriott Convention Centre", eventId: conference.id },
+        { roomType: "Executive Suite", rate: 15000, totalQty: 20, bookedQty: 8, floor: "6-7", wing: "North Wing", hotelName: "JW Marriott Convention Centre", eventId: conference.id },
+      ],
+    });
+
+    await prisma.addOn.createMany({
+      data: [
+        { name: "Conference Lunch (3 days)", price: 0, isIncluded: true, eventId: conference.id },
+        { name: "Networking Dinner", price: 3500, isIncluded: false, eventId: conference.id },
+        { name: "Workshop Pass", price: 5000, isIncluded: false, eventId: conference.id },
+      ],
+    });
+
+    await prisma.attritionRule.createMany({
+      data: [
+        { releaseDate: new Date("2026-04-15"), releasePercent: 25, description: "Release 25% of unsold rooms 30 days prior", eventId: conference.id },
+        { releaseDate: new Date("2026-05-01"), releasePercent: 50, description: "Release 50% of remaining 14 days prior", eventId: conference.id },
+      ],
+    });
+
+    // Conference guests
+    const confGuestData = [
+      { name: "Vikram Sundaram", status: "confirmed", group: "Speakers", email: "vikram.s@techcorp.in", phone: "+91 98100 20001" },
+      { name: "Nandini Rao", status: "confirmed", group: "Speakers", email: "nandini.rao@startupx.com", phone: "+91 98100 20002" },
+      { name: "Suresh Iyer", status: "confirmed", group: "Speakers", email: "suresh.iyer@cloudnext.io", phone: "+91 98100 20003" },
+      { name: "Prashant Mittal", status: "confirmed", group: "Attendees", email: "prashant@infosys.com", phone: "+91 98100 20010" },
+      { name: "Kavitha Menon", status: "confirmed", group: "Attendees", email: "kavitha.m@wipro.com", phone: "+91 98100 20011" },
+      { name: "Rajan Nair", status: "confirmed", group: "Attendees", email: "rajan@tcs.com", phone: "+91 98100 20012" },
+      { name: "Deepa Krishnan", status: "confirmed", group: "Attendees", email: "deepa.k@amazon.in", phone: "+91 98100 20013" },
+      { name: "Arjun Kapoor", status: "confirmed", group: "Attendees", email: "arjun.k@google.com", phone: "+91 98100 20014" },
+      { name: "Shruti Bansal", status: "confirmed", group: "Sponsors", email: "shruti@salesforce.com", phone: "+91 98100 20020" },
+      { name: "Gaurav Bhatia", status: "confirmed", group: "Sponsors", email: "gaurav.b@microsoft.com", phone: "+91 98100 20021" },
+      { name: "Megha Joshi", status: "invited", group: "Attendees", email: "megha@flipkart.com", phone: "+91 98100 20030" },
+      { name: "Anand Sharma", status: "invited", group: "Attendees", email: "anand.s@paytm.com", phone: "+91 98100 20031" },
+      { name: "Poornima Reddy", status: "invited", group: "Attendees", email: "poornima@razorpay.com", phone: "+91 98100 20032" },
+      { name: "Tarun Gupta", status: "invited", group: "Attendees", email: "tarun@zerodha.com", phone: "+91 98100 20033" },
+    ];
+    const confRoomBlocks = await prisma.roomBlock.findMany({ where: { eventId: conference.id } });
+    for (const gd of confGuestData) {
+      const g = await prisma.guest.create({
+        data: { ...gd, phone: gd.phone || null, proximityRequest: null, eventId: conference.id },
+      });
+      if (gd.status === "confirmed") {
+        const rb = gd.group === "Speakers" || gd.group === "Sponsors" ? confRoomBlocks[1] : confRoomBlocks[0];
+        const nights = 3;
+        await prisma.booking.create({
+          data: { guestId: g.id, eventId: conference.id, roomBlockId: rb.id, totalAmount: rb.rate * nights, status: "confirmed" },
+        });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // EVENT 3: Destination Wedding in Goa
+    // ═══════════════════════════════════════════════════════
+    const goaWedding = await prisma.event.create({
+      data: {
+        name: "The Khanna-Batra Beach Wedding",
+        slug: "khanna-batra-goa-2026",
+        type: "wedding",
+        venue: "Taj Exotica Resort & Spa",
+        location: "Benaulim, Goa",
+        checkIn: new Date("2026-03-05"),
+        checkOut: new Date("2026-03-08"),
+        description: "A breathtaking beachside wedding celebration at the Taj Exotica, where the Arabian Sea meets timeless romance. Three days of sun, sand, and celebration.",
+        primaryColor: "#0e7490",
+        secondaryColor: "#ecfeff",
+        accentColor: "#06b6d4",
+        agentId: agent.id,
+        status: "active",
+      },
+    });
+
+    const goaDeluxe = await prisma.roomBlock.create({
+      data: { roomType: "Garden View Room", description: "Spacious room with lush garden views and private sit-out", rate: 14000, totalQty: 40, bookedQty: 32, floor: "1-2", wing: "South Wing", hotelName: "Taj Exotica Resort & Spa", eventId: goaWedding.id },
+    });
+    const goaSea = await prisma.roomBlock.create({
+      data: { roomType: "Sea View Suite", description: "Premium suite with panoramic ocean views and private balcony", rate: 28000, totalQty: 12, bookedQty: 10, floor: "3", wing: "Beachfront", hotelName: "Taj Exotica Resort & Spa", eventId: goaWedding.id },
+    });
+    const goaVilla = await prisma.roomBlock.create({
+      data: { roomType: "Presidential Villa", description: "Ultra-luxury private villa with infinity pool and direct beach access", rate: 65000, totalQty: 3, bookedQty: 3, floor: "Ground", wing: "Villa Complex", hotelName: "Taj Exotica Resort & Spa", eventId: goaWedding.id },
+    });
+
+    await prisma.addOn.createMany({
+      data: [
+        { name: "Sunset Cruise (Couples)", price: 5000, isIncluded: false, eventId: goaWedding.id },
+        { name: "Beach BBQ Night", price: 0, isIncluded: true, eventId: goaWedding.id },
+        { name: "Sangeet Night Pass", price: 0, isIncluded: true, eventId: goaWedding.id },
+        { name: "Catamaran Ride", price: 2500, isIncluded: false, eventId: goaWedding.id },
+        { name: "Ayurvedic Spa (90 min)", price: 4500, isIncluded: false, eventId: goaWedding.id },
+      ],
+    });
+
+    await prisma.attritionRule.createMany({
+      data: [
+        { releaseDate: new Date("2026-02-05"), releasePercent: 20, description: "Release 20% unsold rooms 28 days prior", eventId: goaWedding.id },
+        { releaseDate: new Date("2026-02-19"), releasePercent: 50, description: "Release 50% remaining 14 days prior", eventId: goaWedding.id },
+        { releaseDate: new Date("2026-02-26"), releasePercent: 100, description: "Final release — all unsold rooms 7 days prior", eventId: goaWedding.id },
+      ],
+    });
+
+    const goaGuests = [
+      { name: "Rohan Khanna", status: "confirmed", group: "Groom Family", email: "rohan.k@gmail.com", phone: "+91 99001 10001" },
+      { name: "Nisha Khanna", status: "confirmed", group: "Groom Family", email: "nisha.k@gmail.com", phone: "+91 99001 10002" },
+      { name: "Vikrant Khanna", status: "confirmed", group: "Groom Family", email: "vikrant@gmail.com", phone: "+91 99001 10003" },
+      { name: "Simran Batra", status: "confirmed", group: "Bride Family", email: "simran.b@gmail.com", phone: "+91 99002 20001" },
+      { name: "Harpreet Batra", status: "confirmed", group: "Bride Family", email: "harpreet.b@gmail.com", phone: "+91 99002 20002" },
+      { name: "Gurpreet Singh Batra", status: "confirmed", group: "Bride Family", email: "gurpreet@gmail.com", phone: "+91 99002 20003" },
+      { name: "Jasmine Kaur", status: "confirmed", group: "Bride Family", email: "jasmine.k@gmail.com", phone: "+91 99002 20004" },
+      { name: "Dev Malhotra", status: "confirmed", group: "Friends", email: "dev.m@hotmail.com", phone: "+91 99003 30001" },
+      { name: "Tara Chopra", status: "confirmed", group: "Friends", email: "tara.c@hotmail.com", phone: "+91 99003 30002" },
+      { name: "Kabir Sethi", status: "confirmed", group: "Friends", email: "kabir.s@outlook.com", phone: "+91 99003 30003" },
+      { name: "Zoya Khan", status: "confirmed", group: "Friends", email: "zoya.k@gmail.com", phone: "+91 99003 30004" },
+      { name: "Aman Dhillon", status: "confirmed", group: "Friends", email: "aman.d@gmail.com", phone: "+91 99003 30005" },
+      { name: "Rhea Oberoi", status: "confirmed", group: "Friends", email: "rhea.o@gmail.com", phone: "+91 99003 30006" },
+      { name: "Karan Ahuja", status: "confirmed", group: "College Friends", email: "karan.a@yahoo.com", phone: "+91 99004 40001" },
+      { name: "Priyanka Gill", status: "confirmed", group: "College Friends", email: "priyanka.g@yahoo.com", phone: "+91 99004 40002" },
+      { name: "Manish Tandon", status: "confirmed", group: "College Friends", email: "manish.t@gmail.com", phone: "+91 99004 40003" },
+      { name: "Sania Mirza", status: "confirmed", group: "VIP", email: "sania.m@vip.com", phone: "+91 99005 50001" },
+      { name: "Farhan Ahmed", status: "confirmed", group: "VIP", email: "farhan.a@vip.com", phone: "+91 99005 50002" },
+      { name: "Aditi Reddy", status: "invited", group: "Extended Family", email: "aditi.r@gmail.com", phone: "+91 99006 60001" },
+      { name: "Sameer Walia", status: "invited", group: "Extended Family", email: "sameer.w@gmail.com", phone: "+91 99006 60002" },
+      { name: "Preeti Dutt", status: "invited", group: "Extended Family", email: "preeti.d@gmail.com", phone: "+91 99006 60003" },
+      { name: "Aryan Sood", status: "invited", group: "Friends", email: "aryan.s@gmail.com", phone: "+91 99006 60004" },
+      { name: "Natasha Gill", status: "cancelled", group: "Friends", email: "natasha.g@gmail.com", phone: "+91 99006 60005" },
+    ];
+    const goaRoomOpts = [goaDeluxe, goaDeluxe, goaDeluxe, goaSea, goaSea, goaVilla];
+    for (let i = 0; i < goaGuests.length; i++) {
+      const gd = goaGuests[i];
+      const g = await prisma.guest.create({
+        data: { name: gd.name, email: gd.email, phone: gd.phone, group: gd.group, status: gd.status, proximityRequest: null, eventId: goaWedding.id },
+      });
+      if (gd.status === "confirmed") {
+        const rb = gd.group === "VIP" ? goaVilla : goaRoomOpts[i % goaRoomOpts.length];
+        await prisma.booking.create({
+          data: { guestId: g.id, eventId: goaWedding.id, roomBlockId: rb.id, totalAmount: rb.rate * 3, status: "confirmed" },
+        });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // EVENT 4: Corporate Annual Offsite – Jaipur
+    // ═══════════════════════════════════════════════════════
+    const corpOffsite = await prisma.event.create({
+      data: {
+        name: "Zephyr Corp Annual Offsite 2026",
+        slug: "zephyr-corp-offsite-2026",
+        type: "corporate",
+        venue: "ITC Rajputana",
+        location: "Jaipur, Rajasthan",
+        checkIn: new Date("2026-06-20"),
+        checkOut: new Date("2026-06-23"),
+        description: "Zephyr Corporation's annual leadership offsite bringing together 120+ team members for strategy sessions, team-building, and celebrating milestones in the Pink City.",
+        primaryColor: "#7c3aed",
+        secondaryColor: "#f5f3ff",
+        accentColor: "#a78bfa",
+        agentId: agent.id,
+        status: "active",
+      },
+    });
+
+    const corpStandard = await prisma.roomBlock.create({
+      data: { roomType: "ITC One Room", description: "Well-appointed room with city views and club floor access", rate: 9500, totalQty: 60, bookedQty: 48, floor: "3-6", wing: "Heritage Wing", hotelName: "ITC Rajputana", eventId: corpOffsite.id },
+    });
+    const corpExec = await prisma.roomBlock.create({
+      data: { roomType: "Executive Club Suite", description: "Spacious suite with separate lounge, club privileges and Hawa Mahal views", rate: 18000, totalQty: 15, bookedQty: 12, floor: "7-8", wing: "Tower Block", hotelName: "ITC Rajputana", eventId: corpOffsite.id },
+    });
+    const corpPres = await prisma.roomBlock.create({
+      data: { roomType: "Rajputana Suite", description: "Heritage luxury suite with royal décor, private dining room, and butler service", rate: 35000, totalQty: 5, bookedQty: 4, floor: "9", wing: "Royal Wing", hotelName: "ITC Rajputana", eventId: corpOffsite.id },
+    });
+
+    await prisma.addOn.createMany({
+      data: [
+        { name: "Airport Transfer (Jaipur)", price: 1200, isIncluded: false, eventId: corpOffsite.id },
+        { name: "Team Dinner at Nahargarh Fort", price: 0, isIncluded: true, eventId: corpOffsite.id },
+        { name: "Heritage Walking Tour", price: 1800, isIncluded: false, eventId: corpOffsite.id },
+        { name: "Hot Air Balloon Ride", price: 8000, isIncluded: false, eventId: corpOffsite.id },
+        { name: "Rajasthani Cultural Night", price: 0, isIncluded: true, eventId: corpOffsite.id },
+        { name: "Executive Spa Package", price: 3500, isIncluded: false, eventId: corpOffsite.id },
+      ],
+    });
+
+    await prisma.attritionRule.createMany({
+      data: [
+        { releaseDate: new Date("2026-05-20"), releasePercent: 20, description: "Release 20% unsold inventory 30 days prior", eventId: corpOffsite.id },
+        { releaseDate: new Date("2026-06-06"), releasePercent: 50, description: "Release 50% remaining rooms 14 days prior", eventId: corpOffsite.id },
+        { releaseDate: new Date("2026-06-13"), releasePercent: 100, description: "Full release 7 days prior — penalty applies", eventId: corpOffsite.id },
+      ],
+    });
+
+    const corpGuests = [
+      { name: "Anika Mehra", status: "confirmed", group: "Leadership", email: "anika.m@zephyr.com", phone: "+91 98200 10001" },
+      { name: "Rajat Verma", status: "confirmed", group: "Leadership", email: "rajat.v@zephyr.com", phone: "+91 98200 10002" },
+      { name: "Siddharth Jain", status: "confirmed", group: "Leadership", email: "sid.jain@zephyr.com", phone: "+91 98200 10003" },
+      { name: "Pooja Srinivasan", status: "confirmed", group: "Leadership", email: "pooja.s@zephyr.com", phone: "+91 98200 10004" },
+      { name: "Nikhil Agrawal", status: "confirmed", group: "Engineering", email: "nikhil.a@zephyr.com", phone: "+91 98200 20001" },
+      { name: "Roshni Deshmukh", status: "confirmed", group: "Engineering", email: "roshni.d@zephyr.com", phone: "+91 98200 20002" },
+      { name: "Varun Tiwari", status: "confirmed", group: "Engineering", email: "varun.t@zephyr.com", phone: "+91 98200 20003" },
+      { name: "Aditi Saxena", status: "confirmed", group: "Engineering", email: "aditi.s@zephyr.com", phone: "+91 98200 20004" },
+      { name: "Harsh Pandey", status: "confirmed", group: "Engineering", email: "harsh.p@zephyr.com", phone: "+91 98200 20005" },
+      { name: "Meghna Pillai", status: "confirmed", group: "Engineering", email: "meghna.p@zephyr.com", phone: "+91 98200 20006" },
+      { name: "Dhruv Kapoor", status: "confirmed", group: "Product", email: "dhruv.k@zephyr.com", phone: "+91 98200 30001" },
+      { name: "Isha Bhatt", status: "confirmed", group: "Product", email: "isha.b@zephyr.com", phone: "+91 98200 30002" },
+      { name: "Kunal Thakur", status: "confirmed", group: "Design", email: "kunal.t@zephyr.com", phone: "+91 98200 40001" },
+      { name: "Divya Kohli", status: "confirmed", group: "Design", email: "divya.k@zephyr.com", phone: "+91 98200 40002" },
+      { name: "Ankur Gupta", status: "confirmed", group: "Sales", email: "ankur.g@zephyr.com", phone: "+91 98200 50001" },
+      { name: "Sonal Chauhan", status: "confirmed", group: "Sales", email: "sonal.c@zephyr.com", phone: "+91 98200 50002" },
+      { name: "Yash Malhotra", status: "confirmed", group: "Sales", email: "yash.m@zephyr.com", phone: "+91 98200 50003" },
+      { name: "Ritika Singh", status: "invited", group: "Marketing", email: "ritika.s@zephyr.com", phone: "+91 98200 60001" },
+      { name: "Ayush Sharma", status: "invited", group: "Marketing", email: "ayush.s@zephyr.com", phone: "+91 98200 60002" },
+      { name: "Neelam Puri", status: "invited", group: "HR", email: "neelam.p@zephyr.com", phone: "+91 98200 70001" },
+    ];
+    const corpRoomOpts = [corpStandard, corpStandard, corpStandard, corpExec, corpPres];
+    for (let i = 0; i < corpGuests.length; i++) {
+      const gd = corpGuests[i];
+      const g = await prisma.guest.create({
+        data: { name: gd.name, email: gd.email, phone: gd.phone, group: gd.group, status: gd.status, proximityRequest: null, eventId: corpOffsite.id },
+      });
+      if (gd.status === "confirmed") {
+        const rb = gd.group === "Leadership" ? corpPres : corpRoomOpts[i % corpRoomOpts.length];
+        await prisma.booking.create({
+          data: { guestId: g.id, eventId: corpOffsite.id, roomBlockId: rb.id, totalAmount: rb.rate * 3, status: "confirmed" },
+        });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // EVENT 5: Medical / Pharma Conference – Hyderabad
+    // ═══════════════════════════════════════════════════════
+    const pharmaConf = await prisma.event.create({
+      data: {
+        name: "PharmaVision India 2026",
+        slug: "pharmavision-india-2026",
+        type: "mice",
+        venue: "Novotel Hyderabad Convention Centre",
+        location: "Hyderabad, Telangana",
+        checkIn: new Date("2026-08-08"),
+        checkOut: new Date("2026-08-11"),
+        description: "India's premier pharmaceutical conference — 3 days of keynotes, panel discussions, and networking with 200+ delegates from across the healthcare industry.",
+        primaryColor: "#059669",
+        secondaryColor: "#ecfdf5",
+        accentColor: "#34d399",
+        agentId: agent.id,
+        status: "draft",
+      },
+    });
+
+    const pharmaStd = await prisma.roomBlock.create({
+      data: { roomType: "Superior Room", description: "Comfortable room with work desk and HITEC City views", rate: 7500, totalQty: 80, bookedQty: 35, floor: "4-8", wing: "Main Block", hotelName: "Novotel HICC", eventId: pharmaConf.id },
+    });
+    const pharmaPrem = await prisma.roomBlock.create({
+      data: { roomType: "Premier Suite", description: "Upgraded suite with executive lounge access and express check-in", rate: 14000, totalQty: 25, bookedQty: 12, floor: "9-10", wing: "Tower Block", hotelName: "Novotel HICC", eventId: pharmaConf.id },
+    });
+    const pharmaPres = await prisma.roomBlock.create({
+      data: { roomType: "Presidential Suite", description: "Top-floor luxury suite with living room, dining area, and panoramic city views", rate: 30000, totalQty: 4, bookedQty: 2, floor: "12", wing: "Tower Block", hotelName: "Novotel HICC", eventId: pharmaConf.id },
+    });
+
+    await prisma.addOn.createMany({
+      data: [
+        { name: "Conference Kit + Badge", price: 0, isIncluded: true, eventId: pharmaConf.id },
+        { name: "Workshop: AI in Drug Discovery", price: 7500, isIncluded: false, eventId: pharmaConf.id },
+        { name: "Gala Dinner at Falaknuma Palace", price: 6000, isIncluded: false, eventId: pharmaConf.id },
+        { name: "Hyderabad Heritage Tour", price: 2000, isIncluded: false, eventId: pharmaConf.id },
+        { name: "Airport Transfer (Hyderabad)", price: 800, isIncluded: false, eventId: pharmaConf.id },
+      ],
+    });
+
+    await prisma.attritionRule.createMany({
+      data: [
+        { releaseDate: new Date("2026-07-08"), releasePercent: 25, description: "Release 25% — 30 days prior", eventId: pharmaConf.id },
+        { releaseDate: new Date("2026-07-25"), releasePercent: 50, description: "Release 50% — 14 days prior", eventId: pharmaConf.id },
+        { releaseDate: new Date("2026-08-01"), releasePercent: 100, description: "Full release — 7 days prior", eventId: pharmaConf.id },
+      ],
+    });
+
+    const pharmaGuests = [
+      { name: "Dr. Anjali Deshpande", status: "confirmed", group: "Keynote Speakers", email: "anjali.d@pharmahealth.in", phone: "+91 98300 10001" },
+      { name: "Dr. Raghav Menon", status: "confirmed", group: "Keynote Speakers", email: "raghav.m@astrazeneca.com", phone: "+91 98300 10002" },
+      { name: "Dr. Sunita Reddy", status: "confirmed", group: "Panelists", email: "sunita.r@cipla.com", phone: "+91 98300 20001" },
+      { name: "Dr. Arun Khosla", status: "confirmed", group: "Panelists", email: "arun.k@drreddy.com", phone: "+91 98300 20002" },
+      { name: "Priya Natarajan", status: "confirmed", group: "Delegates", email: "priya.n@sunpharma.com", phone: "+91 98300 30001" },
+      { name: "Vikash Kumar", status: "confirmed", group: "Delegates", email: "vikash.k@biocon.com", phone: "+91 98300 30002" },
+      { name: "Ananya Pillai", status: "confirmed", group: "Delegates", email: "ananya.p@lupin.com", phone: "+91 98300 30003" },
+      { name: "Rajesh Bansal", status: "confirmed", group: "Delegates", email: "rajesh.b@glenmark.com", phone: "+91 98300 30004" },
+      { name: "Meera Iyer", status: "confirmed", group: "Sponsors", email: "meera.i@pfizer.com", phone: "+91 98300 40001" },
+      { name: "Sanjay Gupta", status: "confirmed", group: "Sponsors", email: "sanjay.g@novartis.com", phone: "+91 98300 40002" },
+      { name: "Dr. Farida Khan", status: "invited", group: "Delegates", email: "farida.k@zydus.com", phone: "+91 98300 50001" },
+      { name: "Amit Jha", status: "invited", group: "Delegates", email: "amit.j@torrent.com", phone: "+91 98300 50002" },
+      { name: "Lakshmi Nair", status: "invited", group: "Delegates", email: "lakshmi.n@alkem.com", phone: "+91 98300 50003" },
+      { name: "Rahul Saxena", status: "invited", group: "Delegates", email: "rahul.s@mankind.com", phone: "+91 98300 50004" },
+      { name: "Dr. Vivek Sharma", status: "invited", group: "Delegates", email: "vivek.sh@sanofi.com", phone: "+91 98300 50005" },
+    ];
+    const pharmaRoomOpts = [pharmaStd, pharmaStd, pharmaStd, pharmaPrem, pharmaPres];
+    for (let i = 0; i < pharmaGuests.length; i++) {
+      const gd = pharmaGuests[i];
+      const g = await prisma.guest.create({
+        data: { name: gd.name, email: gd.email, phone: gd.phone, group: gd.group, status: gd.status, proximityRequest: null, eventId: pharmaConf.id },
+      });
+      if (gd.status === "confirmed") {
+        const rb = gd.group === "Keynote Speakers" ? pharmaPres : gd.group === "Sponsors" ? pharmaPrem : pharmaRoomOpts[i % pharmaRoomOpts.length];
+        await prisma.booking.create({
+          data: { guestId: g.id, eventId: pharmaConf.id, roomBlockId: rb.id, totalAmount: rb.rate * 3, status: "confirmed" },
+        });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // EVENT 6: College Reunion – Shimla
+    // ═══════════════════════════════════════════════════════
+    const reunion = await prisma.event.create({
+      data: {
+        name: "IIT Delhi – Batch of 2016 Reunion",
+        slug: "iitd-2016-reunion-shimla",
+        type: "social",
+        venue: "Wildflower Hall, An Oberoi Resort",
+        location: "Shimla, Himachal Pradesh",
+        checkIn: new Date("2026-10-15"),
+        checkOut: new Date("2026-10-18"),
+        description: "10-year reunion of IIT Delhi's Class of 2016. Three days of nostalgia, adventure, and reconnection in the Himalayan foothills at one of India's finest resorts.",
+        primaryColor: "#dc2626",
+        secondaryColor: "#fef2f2",
+        accentColor: "#f87171",
+        agentId: agent.id,
+        status: "active",
+      },
+    });
+
+    const reunionStd = await prisma.roomBlock.create({
+      data: { roomType: "Premier Room", description: "Mountain-facing room with fireplace and valley views", rate: 18000, totalQty: 25, bookedQty: 18, floor: "1-2", wing: "Valley Wing", hotelName: "Wildflower Hall", eventId: reunion.id },
+    });
+    const reunionDlx = await prisma.roomBlock.create({
+      data: { roomType: "Deluxe Suite", description: "Upgraded suite with sitting area, mountain views and heated bathroom floors", rate: 32000, totalQty: 10, bookedQty: 7, floor: "2", wing: "Ridge Wing", hotelName: "Wildflower Hall", eventId: reunion.id },
+    });
+    const reunionLord = await prisma.roomBlock.create({
+      data: { roomType: "Lord Kitchener Suite", description: "Historic signature suite with private garden, antique furnishing, and Himalayan panorama", rate: 55000, totalQty: 2, bookedQty: 1, floor: "3", wing: "Heritage", hotelName: "Wildflower Hall", eventId: reunion.id },
+    });
+
+    await prisma.addOn.createMany({
+      data: [
+        { name: "Bonfire & Karaoke Night", price: 0, isIncluded: true, eventId: reunion.id },
+        { name: "Himalayan Trek (Guided)", price: 3000, isIncluded: false, eventId: reunion.id },
+        { name: "Mountain Biking Experience", price: 4000, isIncluded: false, eventId: reunion.id },
+        { name: "Oberoi Spa Day Pass", price: 5500, isIncluded: false, eventId: reunion.id },
+        { name: "Shimla Heritage Walk", price: 1500, isIncluded: false, eventId: reunion.id },
+        { name: "Private Wine Tasting", price: 3500, isIncluded: false, eventId: reunion.id },
+      ],
+    });
+
+    await prisma.attritionRule.createMany({
+      data: [
+        { releaseDate: new Date("2026-09-15"), releasePercent: 30, description: "Release 30% — 30 days prior", eventId: reunion.id },
+        { releaseDate: new Date("2026-10-01"), releasePercent: 60, description: "Release 60% — 14 days prior", eventId: reunion.id },
+        { releaseDate: new Date("2026-10-08"), releasePercent: 100, description: "Full release — 7 days prior", eventId: reunion.id },
+      ],
+    });
+
+    const reunionGuests = [
+      { name: "Arnav Khanna", status: "confirmed", group: "Organizers", email: "arnav.k@alumni.iitd.ac.in", phone: "+91 99500 10001" },
+      { name: "Ishita Malhotra", status: "confirmed", group: "Organizers", email: "ishita.m@alumni.iitd.ac.in", phone: "+91 99500 10002" },
+      { name: "Sahil Mehra", status: "confirmed", group: "Organizers", email: "sahil.m@alumni.iitd.ac.in", phone: "+91 99500 10003" },
+      { name: "Kriti Bose", status: "confirmed", group: "CSE Batch", email: "kriti.b@google.com", phone: "+91 99500 20001" },
+      { name: "Abhinav Rao", status: "confirmed", group: "CSE Batch", email: "abhinav.r@meta.com", phone: "+91 99500 20002" },
+      { name: "Neeraj Kumar", status: "confirmed", group: "CSE Batch", email: "neeraj.k@uber.com", phone: "+91 99500 20003" },
+      { name: "Tanya Bhardwaj", status: "confirmed", group: "CSE Batch", email: "tanya.b@stripe.com", phone: "+91 99500 20004" },
+      { name: "Rohan Shetty", status: "confirmed", group: "Mech Batch", email: "rohan.s@tata.com", phone: "+91 99500 30001" },
+      { name: "Prachi Joshi", status: "confirmed", group: "Mech Batch", email: "prachi.j@bosch.com", phone: "+91 99500 30002" },
+      { name: "Vivek Agarwal", status: "confirmed", group: "EE Batch", email: "vivek.a@qualcomm.com", phone: "+91 99500 40001" },
+      { name: "Swati Mukherjee", status: "confirmed", group: "EE Batch", email: "swati.m@samsung.com", phone: "+91 99500 40002" },
+      { name: "Parth Trivedi", status: "confirmed", group: "EE Batch", email: "parth.t@intel.com", phone: "+91 99500 40003" },
+      { name: "Shreya Chatterjee", status: "invited", group: "CSE Batch", email: "shreya.c@netflix.com", phone: "+91 99500 50001" },
+      { name: "Mohit Agnihotri", status: "invited", group: "Mech Batch", email: "mohit.a@mahindra.com", phone: "+91 99500 50002" },
+      { name: "Deepika Raman", status: "invited", group: "EE Batch", email: "deepika.r@ti.com", phone: "+91 99500 50003" },
+      { name: "Rohit Kadam", status: "invited", group: "Civil Batch", email: "rohit.k@lnt.com", phone: "+91 99500 50004" },
+      { name: "Anita Srivastava", status: "cancelled", group: "CSE Batch", email: "anita.s@amazon.com", phone: "+91 99500 60001" },
+    ];
+    const reunionRoomOpts = [reunionStd, reunionStd, reunionDlx, reunionLord];
+    for (let i = 0; i < reunionGuests.length; i++) {
+      const gd = reunionGuests[i];
+      const g = await prisma.guest.create({
+        data: { name: gd.name, email: gd.email, phone: gd.phone, group: gd.group, status: gd.status, proximityRequest: null, eventId: reunion.id },
+      });
+      if (gd.status === "confirmed") {
+        const rb = gd.group === "Organizers" ? reunionDlx : reunionRoomOpts[i % reunionRoomOpts.length];
+        await prisma.booking.create({
+          data: { guestId: g.id, eventId: reunion.id, roomBlockId: rb.id, totalAmount: rb.rate * 3, status: "confirmed" },
+        });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // EVENT 7: Product Launch – Bengaluru
+    // ═══════════════════════════════════════════════════════
+    const productLaunch = await prisma.event.create({
+      data: {
+        name: "NovaByte AI – Product Launch 2026",
+        slug: "novabyte-ai-launch-2026",
+        type: "corporate",
+        venue: "The Leela Palace",
+        location: "Bengaluru, Karnataka",
+        checkIn: new Date("2026-09-10"),
+        checkOut: new Date("2026-09-12"),
+        description: "NovaByte unveils its next-generation AI platform to partners, investors, media, and enterprise clients. Two days of demos, keynotes, and after-parties at The Leela Palace Bengaluru.",
+        primaryColor: "#0f172a",
+        secondaryColor: "#f8fafc",
+        accentColor: "#38bdf8",
+        agentId: agent.id,
+        status: "active",
+      },
+    });
+
+    const launchStd = await prisma.roomBlock.create({
+      data: { roomType: "Luxury Room", description: "Elegantly appointed room with city skyline views and marble bathroom", rate: 16000, totalQty: 35, bookedQty: 28, floor: "4-7", wing: "Palace Wing", hotelName: "The Leela Palace", eventId: productLaunch.id },
+    });
+    const launchClub = await prisma.roomBlock.create({
+      data: { roomType: "Royal Club Room", description: "Premium room with club lounge access, evening cocktails, and butler service", rate: 25000, totalQty: 15, bookedQty: 11, floor: "8-9", wing: "Royal Wing", hotelName: "The Leela Palace", eventId: productLaunch.id },
+    });
+    const launchSuite = await prisma.roomBlock.create({
+      data: { roomType: "Grand Presidential Suite", description: "The finest suite with private dining, grand piano, terrace, and 24/7 butler", rate: 75000, totalQty: 2, bookedQty: 2, floor: "10", wing: "Penthouse", hotelName: "The Leela Palace", eventId: productLaunch.id },
+    });
+
+    await prisma.addOn.createMany({
+      data: [
+        { name: "Launch Day Passes (Partner)", price: 0, isIncluded: true, eventId: productLaunch.id },
+        { name: "VIP After-Party", price: 8000, isIncluded: false, eventId: productLaunch.id },
+        { name: "Bangalore Brewery Tour", price: 3000, isIncluded: false, eventId: productLaunch.id },
+        { name: "Nandi Hills Sunrise Trip", price: 2500, isIncluded: false, eventId: productLaunch.id },
+        { name: "Airport Concierge (Luxury)", price: 3500, isIncluded: false, eventId: productLaunch.id },
+      ],
+    });
+
+    await prisma.attritionRule.createMany({
+      data: [
+        { releaseDate: new Date("2026-08-10"), releasePercent: 25, description: "Release 25% — 30 days prior", eventId: productLaunch.id },
+        { releaseDate: new Date("2026-08-27"), releasePercent: 50, description: "Release 50% — 14 days prior", eventId: productLaunch.id },
+        { releaseDate: new Date("2026-09-03"), releasePercent: 100, description: "Full release — 7 days prior", eventId: productLaunch.id },
+      ],
+    });
+
+    const launchGuests = [
+      { name: "Arjun Rathore", status: "confirmed", group: "NovaByte Team", email: "arjun@novabyte.ai", phone: "+91 98400 10001" },
+      { name: "Meera Iyer", status: "confirmed", group: "NovaByte Team", email: "meera@novabyte.ai", phone: "+91 98400 10002" },
+      { name: "Sameer Kulkarni", status: "confirmed", group: "NovaByte Team", email: "sameer@novabyte.ai", phone: "+91 98400 10003" },
+      { name: "Kavya Nambiar", status: "confirmed", group: "NovaByte Team", email: "kavya@novabyte.ai", phone: "+91 98400 10004" },
+      { name: "Rakesh Agarwal", status: "confirmed", group: "Investors", email: "rakesh@sequoia.com", phone: "+91 98400 20001" },
+      { name: "Nisha Goyal", status: "confirmed", group: "Investors", email: "nisha@accel.com", phone: "+91 98400 20002" },
+      { name: "Tim Chen", status: "confirmed", group: "Investors", email: "tim.c@lightspeed.com", phone: "+1 650 555 0001" },
+      { name: "Priyanka Dutta", status: "confirmed", group: "Enterprise Clients", email: "priyanka.d@reliance.com", phone: "+91 98400 30001" },
+      { name: "Varun Malhotra", status: "confirmed", group: "Enterprise Clients", email: "varun.m@hdfc.com", phone: "+91 98400 30002" },
+      { name: "Sunita Kaur", status: "confirmed", group: "Enterprise Clients", email: "sunita.k@infosys.com", phone: "+91 98400 30003" },
+      { name: "Aditya Prakash", status: "confirmed", group: "Enterprise Clients", email: "aditya.p@tcs.com", phone: "+91 98400 30004" },
+      { name: "Kamini Rao", status: "confirmed", group: "Media", email: "kamini@techcrunch.in", phone: "+91 98400 40001" },
+      { name: "Rohit Khanna", status: "confirmed", group: "Media", email: "rohit.k@yourstory.com", phone: "+91 98400 40002" },
+      { name: "Ananya Sharma", status: "confirmed", group: "Media", email: "ananya.s@moneycontrol.com", phone: "+91 98400 40003" },
+      { name: "Jason Lee", status: "confirmed", group: "Partners", email: "jason.l@aws.com", phone: "+1 415 555 0001" },
+      { name: "Maria Santos", status: "confirmed", group: "Partners", email: "maria.s@google.com", phone: "+1 650 555 0002" },
+      { name: "Deepak Mehta", status: "invited", group: "Enterprise Clients", email: "deepak.m@wipro.com", phone: "+91 98400 50001" },
+      { name: "Snehal Patil", status: "invited", group: "Enterprise Clients", email: "snehal.p@mahindra.com", phone: "+91 98400 50002" },
+      { name: "Kiran Reddy", status: "invited", group: "Partners", email: "kiran.r@azure.com", phone: "+91 98400 50003" },
+      { name: "Prasad Nair", status: "cancelled", group: "Media", email: "prasad.n@et.com", phone: "+91 98400 60001" },
+    ];
+    const launchRoomOpts = [launchStd, launchStd, launchClub, launchSuite];
+    for (let i = 0; i < launchGuests.length; i++) {
+      const gd = launchGuests[i];
+      const g = await prisma.guest.create({
+        data: { name: gd.name, email: gd.email, phone: gd.phone, group: gd.group, status: gd.status, proximityRequest: null, eventId: productLaunch.id },
+      });
+      if (gd.status === "confirmed") {
+        const rb = gd.group === "Investors" ? launchSuite : gd.group === "Partners" || gd.group === "NovaByte Team" ? launchClub : launchRoomOpts[i % launchRoomOpts.length];
+        await prisma.booking.create({
+          data: { guestId: g.id, eventId: productLaunch.id, roomBlockId: rb.id, totalAmount: rb.rate * 2, status: "confirmed" },
+        });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // CROSS-EVENT DATA: Discount Rules, Activity Logs, Feedback, Waitlist
+    // ═══════════════════════════════════════════════════════
+
+    // ── Seed Discount Rules ──
+    await prisma.discountRule.createMany({
+      data: [
+        { eventId: wedding.id, minRooms: 5, discountPct: 5.0, description: "5% off for 5+ rooms booked together" },
+        { eventId: wedding.id, minRooms: 10, discountPct: 10.0, description: "10% off for 10+ rooms booked together" },
+        { eventId: wedding.id, minRooms: 20, discountPct: 15.0, description: "15% off for 20+ rooms — group deal" },
+        { eventId: conference.id, minRooms: 10, discountPct: 8.0, description: "8% corporate discount for 10+ rooms" },
+        { eventId: conference.id, minRooms: 25, discountPct: 12.0, description: "12% bulk discount for 25+ rooms" },
+        { eventId: goaWedding.id, minRooms: 5, discountPct: 5.0, description: "5% off for 5+ rooms" },
+        { eventId: goaWedding.id, minRooms: 15, discountPct: 12.0, description: "12% group discount for 15+ rooms" },
+        { eventId: corpOffsite.id, minRooms: 20, discountPct: 10.0, description: "10% corporate volume discount" },
+        { eventId: corpOffsite.id, minRooms: 40, discountPct: 15.0, description: "15% bulk enterprise deal for 40+ rooms" },
+        { eventId: pharmaConf.id, minRooms: 15, discountPct: 8.0, description: "8% early-bird delegate discount" },
+        { eventId: pharmaConf.id, minRooms: 30, discountPct: 12.0, description: "12% sponsor bulk rate for 30+ rooms" },
+        { eventId: reunion.id, minRooms: 10, discountPct: 7.0, description: "7% alumni group discount" },
+        { eventId: reunion.id, minRooms: 20, discountPct: 12.0, description: "12% full batch booking discount" },
+        { eventId: productLaunch.id, minRooms: 10, discountPct: 8.0, description: "8% corporate partner rate" },
+        { eventId: productLaunch.id, minRooms: 20, discountPct: 12.0, description: "12% enterprise volume deal" },
+      ],
+    });
+
+    // ── Seed Activity Logs ──
+    await prisma.activityLog.createMany({
+      data: [
+        // Wedding
+        { eventId: wedding.id, action: "event_created", details: "Event 'The Sharma-Patel Wedding' was created", actor: "Rajesh Kumar" },
+        { eventId: wedding.id, action: "rooms_blocked", details: "50 rooms blocked across 3 categories", actor: "Rajesh Kumar" },
+        { eventId: wedding.id, action: "guest_imported", details: "26 guests imported via bulk upload", actor: "Rajesh Kumar" },
+        { eventId: wedding.id, action: "booking_created", details: "Priya Sharma booked Deluxe Room — ₹36,000", actor: "Priya Sharma" },
+        { eventId: wedding.id, action: "booking_created", details: "Mr. Harish Sharma booked Royal Suite — ₹1,35,000", actor: "Mr. Harish Sharma" },
+        { eventId: wedding.id, action: "vip_allocated", details: "5 VIP guests allocated to Floor 5, Tower wing", actor: "system" },
+        { eventId: wedding.id, action: "nudge_sent", details: "Reminder sent to 3 uninvited guests via WhatsApp", actor: "system" },
+        // TechConnect
+        { eventId: conference.id, action: "event_created", details: "Event 'TechConnect Summit 2026' was created", actor: "Rajesh Kumar" },
+        { eventId: conference.id, action: "rooms_blocked", details: "70 rooms blocked across 2 categories", actor: "Rajesh Kumar" },
+        { eventId: conference.id, action: "guest_imported", details: "14 delegates added to guest list", actor: "Rajesh Kumar" },
+        // Goa Wedding
+        { eventId: goaWedding.id, action: "event_created", details: "Event 'The Khanna-Batra Beach Wedding' was created", actor: "Rajesh Kumar" },
+        { eventId: goaWedding.id, action: "rooms_blocked", details: "55 rooms blocked across 3 categories at Taj Exotica", actor: "Rajesh Kumar" },
+        { eventId: goaWedding.id, action: "guest_imported", details: "23 guests imported via bulk upload", actor: "Rajesh Kumar" },
+        { eventId: goaWedding.id, action: "booking_created", details: "Rohan Khanna booked Garden View Room — ₹42,000", actor: "Rohan Khanna" },
+        { eventId: goaWedding.id, action: "booking_created", details: "Sania Mirza booked Presidential Villa — ₹1,95,000", actor: "Sania Mirza" },
+        { eventId: goaWedding.id, action: "nudge_sent", details: "Beach wedding invite sent to 4 pending guests", actor: "system" },
+        // Corporate Offsite
+        { eventId: corpOffsite.id, action: "event_created", details: "Event 'Zephyr Corp Annual Offsite 2026' created", actor: "Rajesh Kumar" },
+        { eventId: corpOffsite.id, action: "rooms_blocked", details: "80 rooms blocked across 3 categories at ITC Rajputana", actor: "Rajesh Kumar" },
+        { eventId: corpOffsite.id, action: "guest_imported", details: "20 employees added across 5 departments", actor: "Rajesh Kumar" },
+        { eventId: corpOffsite.id, action: "auto_allocate", details: "Auto-allocated 17 confirmed staff to rooms by department", actor: "system" },
+        // PharmaVision
+        { eventId: pharmaConf.id, action: "event_created", details: "Event 'PharmaVision India 2026' created", actor: "Rajesh Kumar" },
+        { eventId: pharmaConf.id, action: "rooms_blocked", details: "109 rooms blocked at Novotel HICC", actor: "Rajesh Kumar" },
+        { eventId: pharmaConf.id, action: "guest_imported", details: "15 delegates and speakers added", actor: "Rajesh Kumar" },
+        // IIT Reunion
+        { eventId: reunion.id, action: "event_created", details: "Event 'IIT Delhi – Batch of 2016 Reunion' created", actor: "Rajesh Kumar" },
+        { eventId: reunion.id, action: "rooms_blocked", details: "37 rooms blocked at Wildflower Hall", actor: "Rajesh Kumar" },
+        { eventId: reunion.id, action: "guest_imported", details: "17 alumni added to guest list", actor: "Rajesh Kumar" },
+        { eventId: reunion.id, action: "booking_created", details: "Arnav Khanna booked Deluxe Suite — ₹96,000", actor: "Arnav Khanna" },
+        // NovaByte Launch
+        { eventId: productLaunch.id, action: "event_created", details: "Event 'NovaByte AI – Product Launch 2026' created", actor: "Rajesh Kumar" },
+        { eventId: productLaunch.id, action: "rooms_blocked", details: "52 rooms blocked at The Leela Palace", actor: "Rajesh Kumar" },
+        { eventId: productLaunch.id, action: "guest_imported", details: "20 attendees added (team, investors, clients, media, partners)", actor: "Rajesh Kumar" },
+        { eventId: productLaunch.id, action: "booking_created", details: "Rakesh Agarwal (Sequoia) booked Grand Presidential Suite — ₹1,50,000", actor: "Rakesh Agarwal" },
+        { eventId: productLaunch.id, action: "nudge_sent", details: "Launch invite sent to 3 pending enterprise clients", actor: "system" },
+      ],
+    });
+
+    // ── Seed Feedback ──
+    await prisma.feedback.createMany({
+      data: [
+        // Wedding
+        { eventId: wedding.id, guestName: "Priya Sharma", guestEmail: "priya@email.com", rating: 5, stayRating: 5, eventRating: 5, comment: "Absolutely magical! Every detail was perfect. The lake view from our room was breathtaking." },
+        { eventId: wedding.id, guestName: "Amit Patel", guestEmail: "amit@email.com", rating: 4, stayRating: 4, eventRating: 5, comment: "Wonderful ceremony and great hospitality. Room service could be a bit faster." },
+        { eventId: wedding.id, guestName: "Aditya Rai", guestEmail: "aditya@email.com", rating: 5, stayRating: 5, eventRating: 4, comment: "Loved every moment! The hotel was fantastic. Would have liked more vegetarian options at dinner." },
+        { eventId: wedding.id, guestName: "Sneha Kapoor", guestEmail: "sneha@email.com", rating: 4, stayRating: 3, eventRating: 5, comment: "The wedding was gorgeous. Room AC had some issues but staff resolved it quickly." },
+        { eventId: wedding.id, guestName: "Deepak Joshi", guestEmail: "deepak@email.com", rating: 5, stayRating: 5, eventRating: 5, comment: "Best wedding I've attended. Everything was world-class!" },
+        // Goa Wedding
+        { eventId: goaWedding.id, guestName: "Dev Malhotra", guestEmail: "dev.m@hotmail.com", rating: 5, stayRating: 5, eventRating: 5, comment: "The sunset ceremony on the beach was unforgettable! Taj Exotica is paradise." },
+        { eventId: goaWedding.id, guestName: "Tara Chopra", guestEmail: "tara.c@hotmail.com", rating: 5, stayRating: 4, eventRating: 5, comment: "Gorgeous venue, amazing food. The sangeet night had everyone on their feet!" },
+        { eventId: goaWedding.id, guestName: "Karan Ahuja", guestEmail: "karan.a@yahoo.com", rating: 4, stayRating: 4, eventRating: 4, comment: "Great wedding, loved the beach vibes. WiFi could have been better in the rooms." },
+        { eventId: goaWedding.id, guestName: "Sania Mirza", guestEmail: "sania.m@vip.com", rating: 5, stayRating: 5, eventRating: 5, comment: "The villa was absolutely stunning. A truly royal experience." },
+        // Corporate Offsite
+        { eventId: corpOffsite.id, guestName: "Anika Mehra", guestEmail: "anika.m@zephyr.com", rating: 5, stayRating: 5, eventRating: 5, comment: "Best offsite we've ever had. ITC Rajputana exceeded all expectations." },
+        { eventId: corpOffsite.id, guestName: "Nikhil Agrawal", guestEmail: "nikhil.a@zephyr.com", rating: 4, stayRating: 4, eventRating: 5, comment: "The Nahargarh Fort dinner was the highlight! Team bonding sessions were top-notch." },
+        { eventId: corpOffsite.id, guestName: "Isha Bhatt", guestEmail: "isha.b@zephyr.com", rating: 4, stayRating: 5, eventRating: 3, comment: "Amazing hotel and food. Strategy sessions could have been more interactive." },
+        { eventId: corpOffsite.id, guestName: "Dhruv Kapoor", guestEmail: "dhruv.k@zephyr.com", rating: 5, stayRating: 5, eventRating: 5, comment: "Jaipur was the perfect choice. The cultural night was an amazing touch!" },
+        // IIT Reunion
+        { eventId: reunion.id, guestName: "Arnav Khanna", guestEmail: "arnav.k@alumni.iitd.ac.in", rating: 5, stayRating: 5, eventRating: 5, comment: "Wildflower Hall is magical. Seeing everyone after 10 years was incredibly emotional." },
+        { eventId: reunion.id, guestName: "Kriti Bose", guestEmail: "kriti.b@google.com", rating: 5, stayRating: 5, eventRating: 5, comment: "The trek through the mountains brought back so many memories. A perfect reunion!" },
+        { eventId: reunion.id, guestName: "Rohan Shetty", guestEmail: "rohan.s@tata.com", rating: 4, stayRating: 5, eventRating: 4, comment: "What a resort! The bonfire karaoke night was legendary. Need to do this every year." },
+        { eventId: reunion.id, guestName: "Vivek Agarwal", guestEmail: "vivek.a@qualcomm.com", rating: 5, stayRating: 4, eventRating: 5, comment: "10 years flew by. The Shimla walks and late-night conversations were the best part." },
+        // NovaByte Launch
+        { eventId: productLaunch.id, guestName: "Rakesh Agarwal", guestEmail: "rakesh@sequoia.com", rating: 5, stayRating: 5, eventRating: 5, comment: "Phenomenal product demo and the hospitality was on another level. Presidential suite was incredible." },
+        { eventId: productLaunch.id, guestName: "Priyanka Dutta", guestEmail: "priyanka.d@reliance.com", rating: 4, stayRating: 5, eventRating: 4, comment: "Very impressive launch event. The Leela was an excellent choice." },
+        { eventId: productLaunch.id, guestName: "Kamini Rao", guestEmail: "kamini@techcrunch.in", rating: 5, stayRating: 5, eventRating: 5, comment: "One of the best tech launches I've covered. NovaByte knows how to make an impression." },
+        { eventId: productLaunch.id, guestName: "Jason Lee", guestEmail: "jason.l@aws.com", rating: 4, stayRating: 4, eventRating: 5, comment: "Great partnership potential. The after-party was a nice touch." },
+      ],
+    });
+
+    // ── Seed Waitlist ──
+    await prisma.waitlist.createMany({
+      data: [
+        { guestName: "Mohit Kapoor", guestEmail: "mohit@email.com", guestPhone: "+91 99876 54321", roomBlockId: royal.id, eventId: wedding.id, status: "waiting" },
+        { guestName: "Rashmi Iyer", guestEmail: "rashmi@email.com", guestPhone: "+91 99876 54322", roomBlockId: royal.id, eventId: wedding.id, status: "waiting" },
+        { guestName: "Neha Bajaj", guestEmail: "neha.b@gmail.com", guestPhone: "+91 99876 11111", roomBlockId: goaVilla.id, eventId: goaWedding.id, status: "waiting" },
+        { guestName: "Suraj Thakkar", guestEmail: "suraj.t@gmail.com", guestPhone: "+91 99876 22222", roomBlockId: goaVilla.id, eventId: goaWedding.id, status: "waiting" },
+        { guestName: "Radhika Singhania", guestEmail: "radhika.s@gmail.com", guestPhone: "+91 99876 33333", roomBlockId: launchSuite.id, eventId: productLaunch.id, status: "waiting" },
+        { guestName: "Anuj Patel", guestEmail: "anuj.p@gmail.com", guestPhone: "+91 99876 44444", roomBlockId: reunionLord.id, eventId: reunion.id, status: "waiting" },
+      ],
+    });
+
+    const totalEvents = 7;
+    return NextResponse.json({
+      success: true,
+      message: "Database seeded successfully with 7 events!",
+      data: {
+        agent: agent.name,
+        events: [
+          wedding.name,
+          conference.name,
+          goaWedding.name,
+          corpOffsite.name,
+          pharmaConf.name,
+          reunion.name,
+          productLaunch.name,
+        ],
+        totalEvents,
+        summary: {
+          weddingGuests: createdGuests.length,
+          conferenceGuests: confGuestData.length,
+          goaWeddingGuests: goaGuests.length,
+          corpOffsiteGuests: corpGuests.length,
+          pharmaConfGuests: pharmaGuests.length,
+          reunionGuests: reunionGuests.length,
+          productLaunchGuests: launchGuests.length,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Seed error:", error);
+    return NextResponse.json(
+      { success: false, error: String(error) },
+      { status: 500 }
+    );
+  }
+}

@@ -1,0 +1,204 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import {
+  Activity,
+  UserPlus,
+  Calendar,
+  Send,
+  CheckCircle,
+  ArrowUpDown,
+  ClipboardList,
+  AlertTriangle,
+  Download,
+  Clock,
+  Filter,
+} from "lucide-react";
+
+interface LogEntry {
+  id: string;
+  action: string;
+  details: string;
+  actor: string;
+  createdAt: string;
+}
+
+interface ActivityLogProps {
+  eventId: string;
+}
+
+const actionIcons: Record<string, React.ElementType> = {
+  guest_added: UserPlus,
+  booking_created: Calendar,
+  nudge_sent: Send,
+  guest_checked_in: CheckCircle,
+  room_upgraded: ArrowUpDown,
+  room_downgraded: ArrowUpDown,
+  rooming_list_exported: Download,
+  booking_cancelled: AlertTriangle,
+  waitlist_joined: ClipboardList,
+  auto_allocate: Activity,
+};
+
+const actionColors: Record<string, string> = {
+  guest_added: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400",
+  booking_created: "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400",
+  nudge_sent: "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400",
+  guest_checked_in: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400",
+  room_upgraded: "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
+  room_downgraded: "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400",
+  rooming_list_exported: "bg-cyan-100 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400",
+  booking_cancelled: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400",
+  waitlist_joined: "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400",
+  auto_allocate: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400",
+};
+
+export function ActivityLog({ eventId }: ActivityLogProps) {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionFilter, setActionFilter] = useState<string>("all");
+
+  useEffect(() => {
+    fetch(`/api/events/${eventId}/activity?limit=50`)
+      .then((res) => res.json())
+      .then((data) => {
+        setLogs(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [eventId]);
+
+  const exportActivityCSV = () => {
+    const headers = ["Action", "Details", "Actor", "Timestamp"];
+    const rows = filteredLogs.map((l) => [
+      l.action,
+      l.details,
+      l.actor,
+      new Date(l.createdAt).toLocaleString("en-IN"),
+    ]);
+    const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `activity-log.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const filteredLogs = actionFilter === "all"
+    ? logs
+    : logs.filter((l) => l.action === actionFilter);
+
+  const uniqueActions = [...new Set(logs.map((l) => l.action))];
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex gap-3 animate-pulse">
+            <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 bg-zinc-200 dark:bg-zinc-700 rounded w-3/4" />
+              <div className="h-3 bg-zinc-200 dark:bg-zinc-700 rounded w-1/2" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (logs.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <Activity className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-3" />
+        <p className="text-zinc-500 dark:text-zinc-400">No activity yet</p>
+        <p className="text-sm text-zinc-400 dark:text-zinc-500">
+          Actions will appear here as they happen
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {/* Filter and Export Toolbar */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Filter className="w-3.5 h-3.5 text-zinc-400" />
+          <select
+            value={actionFilter}
+            onChange={(e) => setActionFilter(e.target.value)}
+            title="Filter by action type"
+            className="text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          >
+            <option value="all">All Actions ({logs.length})</option>
+            {uniqueActions.map((action) => (
+              <option key={action} value={action}>
+                {action.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} ({logs.filter((l) => l.action === action).length})
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={exportActivityCSV}
+          className="inline-flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+        >
+          <Download className="w-3 h-3" /> Export
+        </button>
+      </div>
+
+      {/* Timeline line */}
+      <div className="absolute left-5 top-12 bottom-0 w-px bg-zinc-200 dark:bg-zinc-700" />
+
+      <div className="space-y-4">
+        {filteredLogs.map((log) => {
+          const Icon = actionIcons[log.action] || Activity;
+          const colorClass =
+            actionColors[log.action] || "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400";
+          const time = new Date(log.createdAt);
+          const relativeTime = getRelativeTime(time);
+
+          return (
+            <div key={log.id} className="flex gap-3 relative">
+              <div
+                className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 ${colorClass}`}
+              >
+                <Icon className="w-4 h-4" />
+              </div>
+              <div className="flex-1 bg-white dark:bg-zinc-800/50 rounded-lg border border-zinc-100 dark:border-zinc-700/50 p-3">
+                <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                  {log.details}
+                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs text-zinc-400 dark:text-zinc-500 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {relativeTime}
+                  </span>
+                  <span className="text-xs text-zinc-300 dark:text-zinc-600">•</span>
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                    {log.actor}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function getRelativeTime(date: Date): string {
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}

@@ -1,0 +1,473 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
+import { AnimatedCounter } from "@/components/ui/animated-counter";
+import {
+  Search,
+  Filter,
+  Calendar,
+  MapPin,
+  Users,
+  Hotel,
+  TrendingUp,
+  Plus,
+  ArrowRight,
+  Loader2,
+  RefreshCw,
+  Copy,
+  Globe,
+  RotateCcw,
+} from "lucide-react";
+import { formatCurrency, formatDate } from "@/lib/utils";
+
+interface Event {
+  id: string;
+  name: string;
+  slug: string;
+  type: string;
+  status: string;
+  venue: string;
+  location: string;
+  checkIn: string;
+  checkOut: string;
+  primaryColor: string;
+  totalRooms: number;
+  bookedRooms: number;
+  guestCount: number;
+  confirmedGuests: number;
+  totalRevenue: number;
+}
+
+interface DashboardClientProps {
+  initialEvents: Event[];
+}
+
+export function DashboardClient({ initialEvents }: DashboardClientProps) {
+  const [events, setEvents] = useState<Event[]>(initialEvents);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [loading, setLoading] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [resettingDemo, setResettingDemo] = useState(false);
+
+  // Set initial timestamp after mount to avoid hydration mismatch
+  useEffect(() => {
+    setLastRefresh(new Date());
+  }, []);
+
+  // Auto-refresh every 30 seconds
+  const refreshData = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/events");
+      if (res.ok) {
+        const allEvents = await res.json();
+        const mapped = allEvents.map((event: Record<string, unknown>) => ({
+          id: event.id,
+          name: event.name,
+          slug: event.slug,
+          type: event.type,
+          status: event.status,
+          venue: event.venue,
+          location: event.location,
+          checkIn: event.checkIn,
+          checkOut: event.checkOut,
+          primaryColor: event.primaryColor,
+          totalRooms: (event.roomBlocks as { totalQty: number }[])?.reduce((s: number, r: { totalQty: number }) => s + r.totalQty, 0) || 0,
+          bookedRooms: (event.roomBlocks as { bookedQty: number }[])?.reduce((s: number, r: { bookedQty: number }) => s + r.bookedQty, 0) || 0,
+          guestCount: (event.guests as unknown[])?.length || 0,
+          confirmedGuests: (event.guests as { status: string }[])?.filter((g: { status: string }) => g.status === "confirmed").length || 0,
+          totalRevenue: (event.bookings as { totalAmount: number }[])?.reduce((s: number, b: { totalAmount: number }) => s + b.totalAmount, 0) || 0,
+        }));
+        setEvents(mapped);
+        setLastRefresh(new Date());
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  // Reset demo data
+  const resetDemo = useCallback(async () => {
+    if (!confirm("This will reset all demo data. Continue?")) return;
+    setResettingDemo(true);
+    try {
+      const res = await fetch("/api/seed", { method: "POST" });
+      if (res.ok) {
+        await refreshData();
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setResettingDemo(false);
+    }
+  }, [refreshData]);
+
+  useEffect(() => {
+    const interval = setInterval(refreshData, 30000);
+    return () => clearInterval(interval);
+  }, [refreshData]);
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Search and filter
+  useEffect(() => {
+    const searchEvents = async () => {
+      if (!debouncedSearch && statusFilter === "all" && typeFilter === "all") {
+        setEvents(initialEvents);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (debouncedSearch) params.set("q", debouncedSearch);
+        if (statusFilter !== "all") params.set("status", statusFilter);
+        if (typeFilter !== "all") params.set("type", typeFilter);
+
+        const res = await fetch(`/api/events/search?${params}`);
+        if (res.ok) {
+          const data = await res.json();
+          setEvents(data);
+        }
+      } catch (error) {
+        console.error("Search error:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    searchEvents();
+  }, [debouncedSearch, statusFilter, typeFilter, initialEvents]);
+
+
+
+  const getStatusVariant = (status: string) => {
+    switch (status) {
+      case "active":
+        return "success" as const;
+      case "draft":
+        return "secondary" as const;
+      case "completed":
+        return "default" as const;
+      case "cancelled":
+        return "destructive" as const;
+      default:
+        return "secondary" as const;
+    }
+  };
+
+  const getTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      wedding: "Wedding",
+      conference: "Conference",
+      corporate: "Corporate",
+      social: "Social Event",
+    };
+    return labels[type] || type;
+  };
+
+  // Calculate totals
+  const totalRevenue = events.reduce((s, e) => s + e.totalRevenue, 0);
+  const totalGuests = events.reduce((s, e) => s + e.guestCount, 0);
+  const totalRooms = events.reduce((s, e) => s + e.totalRooms, 0);
+  const bookedRooms = events.reduce((s, e) => s + e.bookedRooms, 0);
+
+  return (
+    <div className="animate-fade-in">
+      {/* Auto-refresh indicator */}
+      <div className="flex items-center justify-end gap-2 mb-4">
+        <span className="text-[10px] text-gray-400 dark:text-zinc-500">
+          Last updated: {lastRefresh ? lastRefresh.toLocaleTimeString("en-IN") : "--:--:--"}
+        </span>
+        <button
+          onClick={refreshData}
+          disabled={refreshing}
+          className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-400 dark:text-zinc-500 transition-colors"
+          title="Refresh data"
+          aria-label="Refresh dashboard data"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+
+      {/* Stats with Animated Counters */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <Card className="border-0 shadow-sm overflow-hidden relative group hover:shadow-md transition-shadow">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-[#ff6b35]/10 to-transparent rounded-bl-full" />
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-gray-500 dark:text-zinc-400 uppercase tracking-wide">Total Events</p>
+              <Calendar className="h-4 w-4 text-[#ff6b35]" />
+            </div>
+            <AnimatedCounter value={events.length} className="text-3xl font-bold text-gray-900 dark:text-zinc-100" />
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm overflow-hidden relative group hover:shadow-md transition-shadow">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-emerald-500/10 to-transparent rounded-bl-full" />
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-gray-500 dark:text-zinc-400 uppercase tracking-wide">Total Revenue</p>
+              <TrendingUp className="h-4 w-4 text-emerald-600" />
+            </div>
+            <AnimatedCounter
+              value={totalRevenue}
+              className="text-3xl font-bold text-gray-900 dark:text-zinc-100"
+              prefix="₹"
+              formatter={(n) => n.toLocaleString("en-IN")}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm overflow-hidden relative group hover:shadow-md transition-shadow">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-purple-500/10 to-transparent rounded-bl-full" />
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-gray-500 dark:text-zinc-400 uppercase tracking-wide">Total Guests</p>
+              <Users className="h-4 w-4 text-purple-600" />
+            </div>
+            <AnimatedCounter value={totalGuests} className="text-3xl font-bold text-gray-900 dark:text-zinc-100" />
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm overflow-hidden relative group hover:shadow-md transition-shadow">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-blue-500/10 to-transparent rounded-bl-full" />
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-gray-500 dark:text-zinc-400 uppercase tracking-wide">Room Occupancy</p>
+              <Hotel className="h-4 w-4 text-blue-600" />
+            </div>
+            <AnimatedCounter
+              value={totalRooms > 0 ? Math.round((bookedRooms / totalRooms) * 100) : 0}
+              suffix="%"
+              className="text-3xl font-bold text-gray-900 dark:text-zinc-100"
+            />
+            <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{bookedRooms}/{totalRooms} rooms</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Search and Filters */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex-1 min-w-[250px] relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-zinc-500" />
+          <Input
+            placeholder="Search events by name, venue, or location..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+          {loading && (
+            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-zinc-500 animate-spin" />
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-gray-400 dark:text-zinc-500" />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            title="Filter by status"
+            className="text-sm border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-2 bg-white dark:bg-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/20 focus:border-[#ff6b35]"
+          >
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="draft">Draft</option>
+            <option value="completed">Completed</option>
+          </select>
+
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            title="Filter by type"
+            className="text-sm border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-2 bg-white dark:bg-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/20 focus:border-[#ff6b35]"
+          >
+            <option value="all">All Types</option>
+            <option value="wedding">Wedding</option>
+            <option value="conference">Conference</option>
+            <option value="corporate">Corporate</option>
+            <option value="social">Social</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={resetDemo}
+            disabled={resettingDemo}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors disabled:opacity-50"
+            title="Reset demo data"
+          >
+            <RotateCcw className={`h-3.5 w-3.5 ${resettingDemo ? "animate-spin" : ""}`} />
+            {resettingDemo ? "Resetting..." : "Reset Demo"}
+          </button>
+          <Link href="/dashboard/onboarding">
+            <Button className="gap-1.5">
+              <Plus className="h-4 w-4" /> New Event
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* Events List */}
+      {events.length === 0 ? (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="py-16 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-50 dark:from-zinc-800 dark:to-zinc-800/50 mx-auto mb-4 shadow-sm">
+              <Calendar className="h-7 w-7 text-zinc-400 dark:text-zinc-500" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-zinc-100 mb-2">
+              {searchTerm || statusFilter !== "all" || typeFilter !== "all"
+                ? "No events match your filters"
+                : "No events yet"}
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-zinc-400 mb-6 max-w-sm mx-auto">
+              {searchTerm || statusFilter !== "all" || typeFilter !== "all"
+                ? "Try adjusting your search or filter criteria."
+                : "Create your first event with AI-powered contract parsing to get started."}
+            </p>
+            {!searchTerm && statusFilter === "all" && typeFilter === "all" && (
+              <Link href="/dashboard/onboarding">
+                <Button className="gap-1.5">
+                  <Plus className="h-4 w-4" /> Create Event
+                </Button>
+              </Link>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4">
+          {events.map((event) => {
+            const occupancy = event.totalRooms > 0
+              ? Math.round((event.bookedRooms / event.totalRooms) * 100)
+              : 0;
+
+            return (
+              <Link key={event.id} href={`/dashboard/events/${event.id}`}>
+                <Card className="border-0 shadow-sm hover:shadow-md transition-all group cursor-pointer">
+                  <CardContent className="p-6">
+                    <div className="flex items-start gap-6">
+                      {/* Color indicator */}
+                      <div
+                        className="w-2 h-full min-h-[80px] rounded-full flex-shrink-0"
+                        style={{ backgroundColor: event.primaryColor }}
+                      />
+
+                      {/* Event info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-zinc-100 group-hover:text-[#ff6b35] transition-colors">
+                              {event.name}
+                            </h3>
+                            <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-zinc-400 mt-1">
+                              <span className="flex items-center gap-1">
+                                <MapPin className="h-3.5 w-3.5" /> {event.venue}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3.5 w-3.5" />
+                                {formatDate(event.checkIn)} - {formatDate(event.checkOut)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={getStatusVariant(event.status)}>
+                              {event.status}
+                            </Badge>
+                            <Badge variant="secondary">{getTypeLabel(event.type)}</Badge>
+                          </div>
+                        </div>
+
+                        {/* Stats row */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
+                          <div>
+                            <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Guests</p>
+                            <p className="text-sm font-semibold">
+                              {event.confirmedGuests}/{event.guestCount}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Revenue</p>
+                            <p className="text-sm font-semibold text-emerald-600">
+                              {formatCurrency(event.totalRevenue)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Rooms</p>
+                            <p className="text-sm font-semibold">
+                              {event.bookedRooms}/{event.totalRooms}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Occupancy</p>
+                            <div className="flex items-center gap-2">
+                              <Progress value={occupancy} className="h-2 flex-1" />
+                              <span className="text-xs font-medium">{occupancy}%</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Quick Actions */}
+                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-zinc-800">
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const url = `${window.location.origin}/event/${event.slug}`;
+                              navigator.clipboard.writeText(url);
+                            }}
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
+                            title="Copy microsite link"
+                            aria-label="Copy event microsite link"
+                          >
+                            <Globe className="h-3 w-3" /> Copy Link
+                          </button>
+                          <span className="text-gray-200 dark:text-zinc-700">|</span>
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              fetch(`/api/events/${event.id}/clone`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ name: `${event.name} (Copy)` }),
+                              }).then(() => refreshData());
+                            }}
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
+                            title="Clone this event"
+                            aria-label="Clone event"
+                          >
+                            <Copy className="h-3 w-3" /> Clone
+                          </button>
+                        </div>
+                      </div>
+
+                      <ArrowRight className="h-5 w-5 text-gray-300 dark:text-zinc-600 group-hover:text-[#ff6b35] group-hover:translate-x-1 transition-all flex-shrink-0 mt-2" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

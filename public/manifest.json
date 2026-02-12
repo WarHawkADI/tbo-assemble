@@ -1,0 +1,17 @@
+{
+  "name": "TBO Assemble",
+  "short_name": "Assemble",
+  "description": "AI-powered Group Travel Operating System for MICE & Weddings",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#fafbfc",
+  "theme_color": "#ff6b35",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["travel", "business", "productivity"]
+}
