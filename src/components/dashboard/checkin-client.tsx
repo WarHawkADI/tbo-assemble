@@ -61,7 +61,8 @@ export function CheckinClient({ eventId, eventName }: CheckinClientProps) {
 
   useEffect(() => {
     fetchBookings();
-  }, [eventId, result]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId]);
 
   const handleCheckin = async () => {
     if (!bookingId.trim()) return;
@@ -107,27 +108,46 @@ export function CheckinClient({ eventId, eventName }: CheckinClientProps) {
   const pendingCount = stats.total - stats.checkedIn;
   const uncheckedBookings = allBookings.filter((b) => !b.checkedIn);
 
+  const [toastMessage, setToastMessage] = useState("");
+
+  const showToastMsg = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(""), 3500);
+  };
+
   const handleBulkCheckin = async () => {
     if (selectedIds.size === 0) return;
     setBulkLoading(true);
     setBulkResult(null);
-    try {
-      const res = await fetch(`/api/events/${eventId}/bulk-checkin`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingIds: Array.from(selectedIds) }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setBulkResult(data.summary);
-        setSelectedIds(new Set());
-        fetchBookings();
+    let checkedIn = 0;
+    let alreadyCheckedIn = 0;
+    let errors = 0;
+
+    for (const id of Array.from(selectedIds)) {
+      try {
+        const res = await fetch(`/api/bookings/${id}/checkin`, {
+          method: "POST",
+        });
+        if (res.ok) {
+          checkedIn++;
+        } else {
+          const data = await res.json();
+          if (data.checkedInAt) {
+            alreadyCheckedIn++;
+          } else {
+            errors++;
+          }
+        }
+      } catch {
+        errors++;
       }
-    } catch {
-      setBulkResult({ checked_in: 0, already_checked_in: 0, errors: selectedIds.size });
-    } finally {
-      setBulkLoading(false);
     }
+
+    setBulkResult({ checked_in: checkedIn, already_checked_in: alreadyCheckedIn, errors });
+    setSelectedIds(new Set());
+    fetchBookings();
+    showToastMsg(`Checked in ${checkedIn} guests successfully`);
+    setBulkLoading(false);
   };
 
   const toggleSelect = (id: string) => {
@@ -145,6 +165,58 @@ export function CheckinClient({ eventId, eventName }: CheckinClientProps) {
     } else {
       setSelectedIds(new Set(uncheckedBookings.map((b) => b.id)));
     }
+  };
+
+  const handlePrintQRCodes = () => {
+    const confirmedBookings = allBookings.filter((b) => b.status === "confirmed");
+    if (confirmedBookings.length === 0) return;
+
+    const printWindow = window.open("", "_blank", "width=900,height=700");
+    if (!printWindow) return;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>QR Codes - ${eventName}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; }
+          h1 { text-align: center; margin-bottom: 8px; font-size: 20px; color: #1a1a1a; }
+          .subtitle { text-align: center; margin-bottom: 24px; font-size: 12px; color: #666; }
+          .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+          .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; break-inside: avoid; }
+          .card img { width: 150px; height: 150px; margin: 8px auto; display: block; }
+          .guest-name { font-weight: 600; font-size: 14px; color: #1a1a1a; margin-bottom: 4px; }
+          .booking-id { font-size: 10px; color: #888; font-family: monospace; word-break: break-all; }
+          .room-type { font-size: 11px; color: #555; margin-top: 4px; }
+          @media print {
+            body { padding: 10px; }
+            .grid { gap: 12px; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>QR Codes — ${eventName}</h1>
+        <p class="subtitle">${confirmedBookings.length} confirmed bookings</p>
+        <button class="no-print" onclick="window.print()" style="display:block;margin:0 auto 20px;padding:8px 24px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;">Print</button>
+        <div class="grid">
+          ${confirmedBookings.map((b) => `
+            <div class="card">
+              <div class="guest-name">${b.guest.name}</div>
+              <div class="room-type">${b.roomBlock.roomType}</div>
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(b.id)}" alt="QR ${b.id}" />
+              <div class="booking-id">${b.id}</div>
+            </div>
+          `).join("")}
+        </div>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   const handleExportCheckinList = () => {
@@ -247,6 +319,13 @@ export function CheckinClient({ eventId, eventName }: CheckinClientProps) {
         >
           <Printer className="w-3.5 h-3.5" /> Print List
         </button>
+        <button
+          onClick={handlePrintQRCodes}
+          disabled={allBookings.length === 0}
+          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors no-print disabled:opacity-50"
+        >
+          <QrCode className="w-3.5 h-3.5" /> Print QR Codes
+        </button>
       </div>
 
       {/* Scanner / Input */}
@@ -273,6 +352,8 @@ export function CheckinClient({ eventId, eventName }: CheckinClientProps) {
               onChange={(e) => setBookingId(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleCheckin()}
               className="w-full pl-10 pr-4 py-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Enter or scan booking ID"
+              /* Intentional autoFocus for kiosk/scanner check-in mode */
               autoFocus
             />
           </div>
@@ -367,6 +448,13 @@ export function CheckinClient({ eventId, eventName }: CheckinClientProps) {
         </div>
       )}
 
+      {/* Toast notification */}
+      {toastMessage && (
+        <div className="fixed bottom-4 right-4 z-50 px-4 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg shadow-lg animate-fade-in">
+          {toastMessage}
+        </div>
+      )}
+
       {/* Bulk Check-In Mode */}
       {showBulkMode && (
         <div className="bg-white dark:bg-zinc-800/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50 p-4">
@@ -423,11 +511,13 @@ export function CheckinClient({ eventId, eventName }: CheckinClientProps) {
                   }`}
                 >
                   <input
+                    id={`check-${b.id}`}
                     type="checkbox"
                     checked={selectedIds.has(b.id)}
                     onChange={() => toggleSelect(b.id)}
                     className="rounded border-zinc-300 text-blue-600 focus:ring-blue-500"
                   />
+                  <label htmlFor={`check-${b.id}`} className="sr-only">Select booking {b.guest.name}</label>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300 truncate">{b.guest.name}</p>
                     <p className="text-[10px] text-zinc-400 dark:text-zinc-500">{b.guest.email}</p>

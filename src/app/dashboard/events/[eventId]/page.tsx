@@ -22,6 +22,7 @@ import {
   Clock,
   BarChart3,
 } from "lucide-react";
+import { DiscountRulesClient } from "@/components/dashboard/discount-rules-client";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,7 @@ export default async function EventOverviewPage({
       bookings: true,
       addOns: true,
       attritionRules: { orderBy: { releaseDate: "asc" } },
+      discountRules: { orderBy: { minRooms: "asc" } },
     },
   });
 
@@ -66,7 +68,12 @@ export default async function EventOverviewPage({
         <div>
           <div className="flex items-center gap-3 mb-2">
             <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100 tracking-tight">{event.name}</h1>
-            <Badge variant={event.status === "active" ? "success" : "secondary"}>
+            <Badge variant={
+              event.status === "active" ? "success"
+              : event.status === "draft" ? "warning"
+              : event.status === "cancelled" ? "destructive"
+              : "secondary"
+            }>
               {event.status}
             </Badge>
           </div>
@@ -80,7 +87,7 @@ export default async function EventOverviewPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <EventOverviewActions slug={event.slug} eventId={eventId} currentStatus={event.status} />
+          <EventOverviewActions slug={event.slug} eventId={eventId} currentStatus={event.status} eventName={event.name} />
           <Link href={`/event/${event.slug}`} target="_blank">
             <Button variant="outline" size="sm" className="gap-1.5">
               <ExternalLink className="h-3.5 w-3.5" /> Guest Microsite
@@ -356,6 +363,20 @@ export default async function EventOverviewPage({
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Discount Rules */}
+      <div className="mt-8">
+        <DiscountRulesClient
+          eventId={eventId}
+          initialRules={event.discountRules.map((r) => ({
+            id: r.id,
+            minRooms: r.minRooms,
+            discountPct: r.discountPct,
+            description: r.description,
+            isActive: r.isActive,
+          }))}
+        />
       </div>
 
       {/* Analytics Charts */}

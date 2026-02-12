@@ -125,6 +125,7 @@ export default function BookingClient({ event }: { event: EventData }) {
           guestPhone,
           guestGroup,
           proximityRequest,
+          specialRequests,
           selectedAddOns,
           totalAmount: grandTotal,
         }),

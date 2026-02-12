@@ -58,6 +58,11 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate email format
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
+    }
+
     // Check event exists
     const event = await prisma.event.findUnique({ where: { id: eventId } });
     if (!event) {
@@ -104,6 +109,11 @@ export async function PUT(request: Request) {
 
     if (!id) {
       return NextResponse.json({ error: "Guest ID is required" }, { status: 400 });
+    }
+
+    // Validate email format
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
     }
 
     const guest = await prisma.guest.update({
@@ -153,30 +163,43 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Guest ID is required" }, { status: 400 });
     }
 
-    // Get guest info for activity log before deletion
+    // Get guest info and bookings for cleanup before deletion
     const guest = await prisma.guest.findUnique({
       where: { id },
-      select: { name: true, eventId: true },
+      select: { name: true, eventId: true, bookings: { select: { id: true, roomBlockId: true } } },
     });
 
     if (!guest) {
       return NextResponse.json({ error: "Guest not found" }, { status: 404 });
     }
 
-    // Delete associated bookings first
-    await prisma.booking.deleteMany({ where: { guestId: id } });
+    // Use transaction to decrement bookedQty, delete bookings, delete guest, and log
+    await prisma.$transaction(async (tx) => {
+      // Decrement bookedQty for each room block the guest had booked
+      for (const booking of guest.bookings) {
+        if (booking.roomBlockId) {
+          await tx.roomBlock.update({
+            where: { id: booking.roomBlockId },
+            data: { bookedQty: { decrement: 1 } },
+          });
+        }
+      }
 
-    // Delete guest
-    await prisma.guest.delete({ where: { id } });
+      // Delete associated bookings
+      await tx.booking.deleteMany({ where: { guestId: id } });
 
-    // Log activity
-    await prisma.activityLog.create({
-      data: {
-        eventId: guest.eventId,
-        action: "guest_removed",
-        details: `Guest "${guest.name}" removed from event`,
-        actor: "Agent",
-      },
+      // Delete guest
+      await tx.guest.delete({ where: { id } });
+
+      // Log activity
+      await tx.activityLog.create({
+        data: {
+          eventId: guest.eventId,
+          action: "guest_removed",
+          details: `Guest "${guest.name}" removed from event`,
+          actor: "Agent",
+        },
+      });
     });
 
     return NextResponse.json({ success: true });

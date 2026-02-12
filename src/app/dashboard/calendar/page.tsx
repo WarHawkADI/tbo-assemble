@@ -38,9 +38,10 @@ export default async function CalendarPage() {
 
   // Upcoming events (sorted by check-in)
   const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
   const upcoming = calendarEvents
-    .filter((e) => new Date(e.checkIn) >= now)
-    .slice(0, 4);
+    .filter((e) => new Date(e.checkIn) >= todayStart);
 
   return (
     <div>
@@ -68,8 +69,9 @@ export default async function CalendarPage() {
 
       {/* Upcoming Events Strip */}
       {upcoming.length > 0 && (
+        <>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          {upcoming.map((event) => {
+          {upcoming.slice(0, 4).map((event) => {
             const daysAway = Math.ceil((new Date(event.checkIn).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
             return (
               <Link
@@ -107,6 +109,12 @@ export default async function CalendarPage() {
             );
           })}
         </div>
+        {upcoming.length > 4 && (
+          <div className="flex justify-end -mt-4 mb-6">
+            <Link href="/dashboard" className="text-xs text-orange-500 hover:text-orange-600 font-medium">See all {upcoming.length} events →</Link>
+          </div>
+        )}
+        </>
       )}
 
       {/* Calendar */}

@@ -38,7 +38,8 @@ function AnimatedBackground() {
     };
     window.addEventListener("mousemove", handleMouse);
 
-    for (let i = 0; i < 60; i++) {
+    const isMobile = canvas.width < 768;
+    for (let i = 0; i < (isMobile ? 25 : 60); i++) {
       const o = Math.random() * 0.25 + 0.08;
       particles.push({
         x: Math.random() * canvas.width,
@@ -112,7 +113,7 @@ function AnimatedBackground() {
     };
   }, []);
 
-  return <canvas ref={canvasRef} className="fixed inset-0 -z-10 pointer-events-none opacity-80" />;
+  return <canvas ref={canvasRef} className="fixed inset-0 -z-10 pointer-events-none opacity-80" aria-hidden="true" />;
 }
 
 /* ───────────────────────────────────────────────
@@ -215,6 +216,12 @@ function TiltCard({ children, className = "" }: { children: React.ReactNode; cla
    ═══════════════════════════════════════════════ */
 export default function Home() {
   const [mobileNav, setMobileNav] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 600);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   const stat1 = useCounter(4, 1800);
   const stat2 = useCounter(13, 1500);
   const stat3 = useCounter(42, 2000);
@@ -264,7 +271,7 @@ export default function Home() {
               <Link href="/dashboard/onboarding" className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#ff6b35] to-[#e55a2b] px-5 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/25 hover:shadow-lg hover:-translate-y-0.5 transition-all btn-shimmer">
                 Get Started <ArrowRight className="h-4 w-4" />
               </Link>
-              <button onClick={() => setMobileNav(!mobileNav)} className="md:hidden p-2 rounded-lg text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800">
+              <button onClick={() => setMobileNav(!mobileNav)} className="md:hidden p-2 rounded-lg text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800" aria-label="Toggle navigation menu" aria-expanded={mobileNav}>
                 {mobileNav ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
             </div>
@@ -330,17 +337,17 @@ export default function Home() {
 
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-16 pb-10 lg:pt-24 lg:pb-16 relative">
           {/* Floating badges */}
-          <div className="hidden lg:block absolute top-24 left-8 animate-float">
+          <div className="hidden lg:block absolute top-24 left-8 animate-float" aria-hidden="true">
             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm border border-gray-200/60 dark:border-zinc-700/60 rounded-full shadow-lg text-xs font-medium text-gray-700 dark:text-zinc-300">
               <Sparkles className="h-3 w-3 text-purple-500" /> AI-Powered
             </div>
           </div>
-          <div className="hidden lg:block absolute top-44 right-12 animate-float-reverse" style={{ animationDelay: "1s" }}>
+          <div className="hidden lg:block absolute top-44 right-12 animate-float-reverse" style={{ animationDelay: "1s" }} aria-hidden="true">
             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm border border-gray-200/60 dark:border-zinc-700/60 rounded-full shadow-lg text-xs font-medium text-gray-700 dark:text-zinc-300">
               <Clock className="h-3 w-3 text-emerald-500" /> 60s Setup
             </div>
           </div>
-          <div className="hidden lg:block absolute bottom-24 left-16 animate-float" style={{ animationDelay: "2s" }}>
+          <div className="hidden lg:block absolute bottom-24 left-16 animate-float" style={{ animationDelay: "2s" }} aria-hidden="true">
             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm border border-gray-200/60 dark:border-zinc-700/60 rounded-full shadow-lg text-xs font-medium text-gray-700 dark:text-zinc-300">
               <TrendingUp className="h-3 w-3 text-blue-500" /> Live Tracking
             </div>
@@ -645,7 +652,7 @@ export default function Home() {
                 </div>
 
                 {/* Stars */}
-                <div className="flex gap-0.5 mb-4 mt-2">
+                <div className="flex gap-0.5 mb-4 mt-2" role="img" aria-label={`${t.stars} out of 5 stars`}>
                   {Array.from({ length: t.stars }).map((_, i) => (
                     <Star key={i} className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
                   ))}
@@ -789,6 +796,7 @@ export default function Home() {
             </h2>
             <p className="mt-3 text-gray-500 dark:text-zinc-400 max-w-xl mx-auto text-base font-medium">See how TBO Assemble replaces manual workflows at every step</p>
           </div>
+          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
           <div className="rounded-2xl border border-gray-200 dark:border-zinc-700 overflow-hidden shadow-sm">
             <div className="grid grid-cols-3">
                 <div className="p-4 bg-gray-50 dark:bg-zinc-800/50 border-b border-gray-200 dark:border-zinc-700 text-sm font-bold text-gray-800 dark:text-zinc-200 uppercase tracking-wider">Task</div>
@@ -804,13 +812,14 @@ export default function Home() {
               ["Revenue Reports", "Manual Excel formulas", "Real-time analytics"],
               ["Guest Changes", "Phone calls & emails", "Self-service portal"],
               ["Multi-Event Mgmt", "Separate spreadsheets", "Unified dashboard"],
-            ].map(([task, manual, tbo], i) => (
-              <div key={i} className="grid grid-cols-3 group hover:bg-gray-50/50 dark:hover:bg-zinc-800/30 transition-colors">
+            ].map(([task, manual, tbo]) => (
+              <div key={task} className="grid grid-cols-3 group hover:bg-gray-50/50 dark:hover:bg-zinc-800/30 transition-colors">
                 <div className="p-3.5 border-b border-gray-100 dark:border-zinc-800 text-sm font-semibold text-gray-800 dark:text-zinc-200">{task}</div>
                 <div className="p-3.5 border-b border-l border-gray-100 dark:border-zinc-800 text-sm text-red-500/80 dark:text-red-400/60 text-center">{manual}</div>
                 <div className="p-3.5 border-b border-l border-gray-100 dark:border-zinc-800 text-sm text-green-600 dark:text-green-400 text-center font-semibold">{tbo}</div>
               </div>
             ))}
+          </div>
           </div>
           <div className="mt-6 text-center">
             <p className="text-base text-gray-500 dark:text-zinc-400 font-semibold">
@@ -915,7 +924,7 @@ export default function Home() {
 
           <div className="pt-6 border-t border-gray-100 dark:border-zinc-800 flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-gray-500 dark:text-zinc-500">
-              <span>&copy; 2026 TBO Tech Pvt. Ltd.</span>
+              <span>&copy; {new Date().getFullYear()} TBO Tech Pvt. Ltd.</span>
               <span className="hidden sm:inline w-px h-3 bg-gray-300 dark:bg-zinc-700" />
               <span>Built with ❤️ by Team IIITDards for VOYAGEHACK 3.0</span>
             </div>
@@ -931,6 +940,16 @@ export default function Home() {
           </div>
         </div>
       </footer>
+
+      {showScrollTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          className="fixed bottom-6 right-6 z-50 flex h-10 w-10 items-center justify-center rounded-full bg-[#ff6b35] text-white shadow-lg hover:bg-[#e55a2b] transition-all animate-fade-in"
+          aria-label="Scroll to top"
+        >
+          <ChevronRight className="h-5 w-5 -rotate-90" />
+        </button>
+      )}
     </div>
   );
 }

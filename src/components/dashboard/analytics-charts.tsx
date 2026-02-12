@@ -50,6 +50,7 @@ export function AnalyticsCharts({
   bookings,
   eventColor = "#ff6b35",
 }: AnalyticsChartsProps) {
+  const isDark = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
   // Room occupancy data
   const roomData = roomBlocks.map((room) => ({
     name: room.roomType.length > 10 ? room.roomType.slice(0, 10) + "..." : room.roomType,
@@ -118,16 +119,16 @@ export function AnalyticsCharts({
           {roomData.length > 0 ? (
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={roomData} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#27272a" : "#f0f0f0"} />
                 <XAxis 
                   dataKey="name" 
-                  tick={{ fontSize: 11, fill: "#6b7280" }}
+                  tick={{ fontSize: 11, fill: isDark ? "#a1a1aa" : "#6b7280" }}
                   angle={-35}
                   textAnchor="end"
                   height={60}
                 />
-                <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} />
-                <Tooltip />
+                <YAxis tick={{ fontSize: 11, fill: isDark ? "#a1a1aa" : "#6b7280" }} />
+                <Tooltip contentStyle={{ backgroundColor: isDark ? '#18181b' : '#fff', borderColor: isDark ? '#3f3f46' : '#e5e7eb', color: isDark ? '#fafafa' : undefined, borderRadius: '8px', fontSize: '12px' }} />
                 <Bar dataKey="booked" stackId="a" fill={eventColor} name="Booked" radius={[0, 0, 0, 0]} />
                 <Bar dataKey="available" stackId="a" fill="#e5e7eb" name="Available" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -164,7 +165,7 @@ export function AnalyticsCharts({
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip contentStyle={{ backgroundColor: isDark ? '#18181b' : '#fff', borderColor: isDark ? '#3f3f46' : '#e5e7eb', color: isDark ? '#fafafa' : undefined, borderRadius: '8px', fontSize: '12px' }} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -190,16 +191,16 @@ export function AnalyticsCharts({
                     <stop offset="95%" stopColor={eventColor} stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#27272a" : "#f0f0f0"} />
                 <XAxis 
                   dataKey="date" 
-                  tick={{ fontSize: 11, fill: "#6b7280" }}
+                  tick={{ fontSize: 11, fill: isDark ? "#a1a1aa" : "#6b7280" }}
                   angle={-35}
                   textAnchor="end"
                   height={60}
                 />
-                <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} />
-                <Tooltip />
+                <YAxis tick={{ fontSize: 11, fill: isDark ? "#a1a1aa" : "#6b7280" }} />
+                <Tooltip contentStyle={{ backgroundColor: isDark ? '#18181b' : '#fff', borderColor: isDark ? '#3f3f46' : '#e5e7eb', color: isDark ? '#fafafa' : undefined, borderRadius: '8px', fontSize: '12px' }} />
                 <Area
                   type="monotone"
                   dataKey="bookings"
@@ -227,10 +228,10 @@ export function AnalyticsCharts({
           {revenueData.length > 0 ? (
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={revenueData} layout="vertical" margin={{ top: 10, right: 10, left: 60, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={true} vertical={false} />
-                <XAxis type="number" tick={{ fontSize: 11, fill: "#6b7280" }} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
-                <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: "#6b7280" }} width={55} />
-                <Tooltip />
+                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#27272a" : "#f0f0f0"} horizontal={true} vertical={false} />
+                <XAxis type="number" tick={{ fontSize: 11, fill: isDark ? "#a1a1aa" : "#6b7280" }} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: isDark ? "#a1a1aa" : "#6b7280" }} width={55} />
+                <Tooltip contentStyle={{ backgroundColor: isDark ? '#18181b' : '#fff', borderColor: isDark ? '#3f3f46' : '#e5e7eb', color: isDark ? '#fafafa' : undefined, borderRadius: '8px', fontSize: '12px' }} />
                 <Legend />
                 <Bar dataKey="revenue" fill={eventColor} name="Earned" radius={[0, 4, 4, 0]} barSize={20} />
                 <Bar dataKey="potential" fill="#e5e7eb" name="Potential" radius={[0, 4, 4, 0]} barSize={20} />
@@ -253,16 +254,16 @@ export function AnalyticsCharts({
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={groupData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#27272a" : "#f0f0f0"} />
                 <XAxis 
                   dataKey="name" 
-                  tick={{ fontSize: 11, fill: "#6b7280" }}
+                  tick={{ fontSize: 11, fill: isDark ? "#a1a1aa" : "#6b7280" }}
                   angle={-25}
                   textAnchor="end"
                   height={50}
                 />
-                <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} />
-                <Tooltip />
+                <YAxis tick={{ fontSize: 11, fill: isDark ? "#a1a1aa" : "#6b7280" }} />
+                <Tooltip contentStyle={{ backgroundColor: isDark ? '#18181b' : '#fff', borderColor: isDark ? '#3f3f46' : '#e5e7eb', color: isDark ? '#fafafa' : undefined, borderRadius: '8px', fontSize: '12px' }} />
                 <Bar dataKey="value" fill="#0066cc" name="Guests" radius={[4, 4, 0, 0]}>
                   {groupData.map((_, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

@@ -4,16 +4,19 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { GripVertical, User, MapPin, ArrowRight, Users, Save, X, Sparkles, Loader2 } from "lucide-react";
+import { GripVertical, User, MapPin, ArrowRight, Users, Save, X, Sparkles, Loader2, Download } from "lucide-react";
 
 interface Guest {
   id: string;
   name: string;
+  email: string | null;
+  phone: string | null;
   group: string | null;
   status: string;
   proximityRequest: string | null;
   allocatedFloor: string | null;
   allocatedWing: string | null;
+  allocatedRoom: string | null;
 }
 
 interface RoomBlock {
@@ -40,6 +43,13 @@ interface FloorWing {
 }
 
 export default function AllocatorClient({ guests, roomBlocks, eventId }: AllocatorClientProps) {
+  const [toast, setToast] = useState("");
+
+  const showToast = (message: string) => {
+    setToast(message);
+    setTimeout(() => setToast(""), 2500);
+  };
+
   const [allocations, setAllocations] = useState<Record<string, { floor: string; wing: string }>>(() => {
     const init: Record<string, { floor: string; wing: string }> = {};
     for (const g of guests) {
@@ -53,6 +63,39 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
   const [draggedGuest, setDraggedGuest] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [autoAllocating, setAutoAllocating] = useState(false);
+
+  const handleExportRoomingList = () => {
+    const headers = ["Guest Name", "Email", "Phone", "Group", "Room Type", "Floor", "Wing", "Room Number", "Status"];
+    const rows = guests.map((g) => {
+      const alloc = allocations[g.id];
+      const floor = alloc?.floor || g.allocatedFloor || "";
+      const wing = alloc?.wing || g.allocatedWing || "";
+      // Find matching room type from floor/wing
+      const matchingRoom = roomBlocks.find(
+        (r) => (r.floor || "1") === floor && (r.wing || "Main") === wing
+      );
+      return [
+        g.name,
+        g.email || "",
+        g.phone || "",
+        g.group || "",
+        matchingRoom?.roomType || "",
+        floor,
+        wing,
+        g.allocatedRoom || "",
+        g.status,
+      ];
+    });
+    const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${c}"`).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `rooming-list-${eventId}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("Rooming list exported");
+  };
 
   // Build floor/wing map
   const floorWingMap = new Map<string, FloorWing>();
@@ -106,11 +149,14 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch(`/api/events/${eventId}/allocate`, {
+      const res = await fetch(`/api/events/${eventId}/allocate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ allocations }),
       });
+      if (res.ok) {
+        showToast("Allocations saved successfully");
+      }
     } catch (e) {
       console.error(e);
     }
@@ -133,21 +179,36 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
     setAutoAllocating(false);
   };
 
-  const groupColors: Record<string, string> = {
-    "Bride Side": "bg-gradient-to-r from-pink-50 to-rose-50 dark:from-pink-950/30 dark:to-rose-950/30 text-pink-800 dark:text-pink-300 border-pink-200/80 dark:border-pink-800/40",
-    "Groom Side": "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 text-blue-800 dark:text-blue-300 border-blue-200/80 dark:border-blue-800/40",
-    VIP: "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 text-amber-800 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/40",
-    Family: "bg-gradient-to-r from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30 text-purple-800 dark:text-purple-300 border-purple-200/80 dark:border-purple-800/40",
-    Friends: "bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 text-emerald-800 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/40",
-  };
+  const GROUP_COLOR_PALETTES = [
+    "bg-gradient-to-r from-pink-50 to-rose-50 dark:from-pink-950/30 dark:to-rose-950/30 text-pink-800 dark:text-pink-300 border-pink-200/80 dark:border-pink-800/40",
+    "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 text-blue-800 dark:text-blue-300 border-blue-200/80 dark:border-blue-800/40",
+    "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 text-amber-800 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/40",
+    "bg-gradient-to-r from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30 text-purple-800 dark:text-purple-300 border-purple-200/80 dark:border-purple-800/40",
+    "bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 text-emerald-800 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/40",
+    "bg-gradient-to-r from-cyan-50 to-sky-50 dark:from-cyan-950/30 dark:to-sky-950/30 text-cyan-800 dark:text-cyan-300 border-cyan-200/80 dark:border-cyan-800/40",
+  ];
+
+  function getGroupColor(group: string): string {
+    let hash = 0;
+    for (let i = 0; i < group.length; i++) hash = group.charCodeAt(i) + ((hash << 5) - hash);
+    return GROUP_COLOR_PALETTES[Math.abs(hash) % GROUP_COLOR_PALETTES.length];
+  }
 
   const getGroupStyle = (group: string | null) =>
-    groupColors[group || ""] || "bg-gradient-to-r from-gray-50 to-slate-50 dark:from-zinc-800 dark:to-zinc-800 text-gray-800 dark:text-zinc-300 border-gray-200/80 dark:border-zinc-700/80";
+    group ? getGroupColor(group) : "bg-gradient-to-r from-gray-50 to-slate-50 dark:from-zinc-800 dark:to-zinc-800 text-gray-800 dark:text-zinc-300 border-gray-200/80 dark:border-zinc-700/80";
 
   return (
     <div className="animate-fade-in">
       {/* Action Buttons */}
       <div className="flex justify-end mb-6 gap-3">
+        <Button
+          onClick={handleExportRoomingList}
+          variant="outline"
+          className="gap-2"
+        >
+          <Download className="h-4 w-4" />
+          Export Rooming List
+        </Button>
         <Button
           onClick={handleAutoAllocate}
           disabled={autoAllocating || unallocatedGuests.length === 0}
@@ -251,6 +312,7 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
                       <button
                         onClick={() => handleRemoveAllocation(guest.id)}
                         title="Remove allocation"
+                        aria-label={`Remove allocation for ${guest.name}`}
                         className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-700 transition-colors"
                       >
                         <X className="h-3 w-3" />
@@ -311,6 +373,13 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className="fixed bottom-4 right-4 z-50 px-4 py-2 bg-green-600 text-white text-sm rounded-lg shadow-lg animate-fade-in">
+          {toast}
+        </div>
       )}
     </div>
   );

@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 
+const AUTH_STORAGE_KEY = "tbo-auth";
+
 interface AuthContextType {
   isAuthenticated: boolean;
   user: { name: string; email: string; role: string } | null;
@@ -26,16 +28,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Check localStorage for existing session
     try {
-      const stored = localStorage.getItem("tbo-auth");
+      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         setUser(parsed);
         setIsAuthenticated(true);
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      if (process.env.NODE_ENV === 'development') console.warn('Auth parse error:', e);
     }
     setIsLoading(false);
+  }, []);
+
+  // Multi-tab auth sync
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === AUTH_STORAGE_KEY) {
+        if (e.newValue) {
+          try {
+            const parsed = JSON.parse(e.newValue);
+            setUser(parsed);
+            setIsAuthenticated(true);
+          } catch { /* ignore */ }
+        } else {
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
   const login = useCallback((email: string, password: string): boolean => {
@@ -46,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userData = { name: found.name, email: found.email, role: found.role };
       setUser(userData);
       setIsAuthenticated(true);
-      localStorage.setItem("tbo-auth", JSON.stringify(userData));
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
       return true;
     }
     return false;
@@ -55,12 +77,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     setUser(null);
     setIsAuthenticated(false);
-    localStorage.removeItem("tbo-auth");
+    localStorage.removeItem(AUTH_STORAGE_KEY);
   }, []);
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#fafbfc] dark:bg-zinc-950">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="TBO Assemble" className="h-12 w-12 animate-pulse" />

@@ -16,7 +16,6 @@ import {
   Sparkles,
   LogOut,
   ChevronRight,
-  ChevronDown,
   HelpCircle,
   Menu,
   X,
@@ -25,15 +24,14 @@ import {
   QrCode,
   Activity,
   MessageSquare,
-  ExternalLink,
   ArrowLeft,
 } from "lucide-react";
 
 const navigation = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, description: "Overview & analytics", shortcut: "⌘D" },
-  { name: "Create Event", href: "/dashboard/onboarding", icon: Sparkles, description: "AI-powered setup", shortcut: "⌘N" },
-  { name: "Calendar", href: "/dashboard/calendar", icon: Calendar, description: "Event calendar", shortcut: "⌘K" },
-  { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3, description: "Compare events", shortcut: "⌘A" },
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, description: "Overview & analytics", shortcut: "Alt+D" },
+  { name: "Create Event", href: "/dashboard/onboarding", icon: Sparkles, description: "AI-powered setup", shortcut: "Alt+N" },
+  { name: "Calendar", href: "/dashboard/calendar", icon: Calendar, description: "Event calendar", shortcut: "Alt+K" },
+  { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3, description: "Compare events", shortcut: "Alt+A" },
 ];
 
 const eventNavigation = [
@@ -61,7 +59,10 @@ export default function Sidebar() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only trigger with Ctrl/Cmd key and not in input fields
-      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key === "Escape") {
+        setMobileOpen(false);
+      }
+      if (!e.altKey) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       
       switch (e.key.toLowerCase()) {
@@ -103,7 +104,7 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto p-4">
+      <nav className="flex-1 overflow-y-auto p-4" aria-label="Main navigation">
         {/* Main Menu — collapsed to icon row when inside an event */}
         {eventId ? (
           <>
@@ -131,6 +132,7 @@ export default function Sidebar() {
                         : "bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-700 hover:text-gray-700 dark:hover:text-zinc-300"
                     )}
                     title={`${item.name} ${item.shortcut || ""}`}
+                    aria-label={item.name}
                   >
                     <item.icon className="h-4 w-4" />
                   </Link>
@@ -151,6 +153,7 @@ export default function Sidebar() {
                     key={item.name}
                     href={item.href}
                     onClick={() => setMobileOpen(false)}
+                    aria-current={isActive ? "page" : undefined}
                     className={cn(
                       "group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all",
                       isActive
@@ -207,6 +210,7 @@ export default function Sidebar() {
                     key={item.name}
                     href={href}
                     onClick={() => setMobileOpen(false)}
+                    aria-current={isActive ? "page" : undefined}
                     className={cn(
                       "group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all",
                       isActive
@@ -264,6 +268,7 @@ export default function Sidebar() {
             onClick={() => { logout(); router.push("/login"); }}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
             title="Sign out"
+            aria-label="Sign out"
           >
             <LogOut className="h-4 w-4" />
           </button>

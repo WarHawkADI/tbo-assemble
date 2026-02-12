@@ -25,16 +25,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Room block not found" }, { status: 404 });
     }
 
-    // Check for duplicate waitlist entry
-    const existing = await prisma.waitlist.findFirst({
-      where: { guestEmail, roomBlockId, status: "waiting" },
-    });
+    // Check for duplicate waitlist entry (only when email is provided)
+    if (guestEmail) {
+      const existing = await prisma.waitlist.findFirst({
+        where: { guestEmail, roomBlockId, status: "waiting" },
+      });
 
-    if (existing) {
-      return NextResponse.json(
-        { error: "Already on waitlist for this room type" },
-        { status: 409 }
-      );
+      if (existing) {
+        return NextResponse.json(
+          { error: "Already on waitlist for this room type" },
+          { status: 409 }
+        );
+      }
     }
 
     const entry = await prisma.waitlist.create({

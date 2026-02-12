@@ -39,7 +39,7 @@ export default function LoginPage() {
         setError("Invalid email or password. Try the demo credentials below.");
         setIsLoading(false);
       }
-    }, 800); // Simulate loading
+    }, 300);
   };
 
   const fillDemo = () => {
@@ -49,11 +49,11 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex bg-[#fafbfc] dark:bg-zinc-950">
+    <div className="min-h-screen flex bg-background">
       {/* Left: Brand Panel */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-[#1e293b] via-[#334155] to-[#0f172a]" />
-        <div className="absolute inset-0">
+        <div className="absolute inset-0" aria-hidden="true">
           <div className="absolute top-20 left-20 w-72 h-72 bg-orange-500/15 rounded-full blur-3xl animate-pulse" style={{ animationDuration: "4s" }} />
           <div className="absolute bottom-20 right-20 w-60 h-60 bg-blue-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: "6s" }} />
         </div>
@@ -130,6 +130,7 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
+                autoComplete="email"
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 text-sm placeholder:text-gray-400 dark:placeholder:text-zinc-500 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all"
               />
             </div>
@@ -146,12 +147,14 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
                   required
+                  autoComplete="current-password"
                   className="w-full px-4 py-3 pr-12 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 text-sm placeholder:text-gray-400 dark:placeholder:text-zinc-500 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -159,7 +162,7 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/40 text-sm text-red-600 dark:text-red-400">
+              <div role="alert" className="px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/40 text-sm text-red-600 dark:text-red-400">
                 {error}
               </div>
             )}
@@ -170,7 +173,7 @@ export default function LoginPage() {
               className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-[#ff6b35] to-[#e55a2b] text-white font-semibold text-sm shadow-lg shadow-orange-500/20 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:translate-y-0 btn-shimmer"
             >
               {isLoading ? (
-                <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+<><div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Signing in...</>
               ) : (
                 <>
                   <LogIn className="h-4 w-4" /> Sign In

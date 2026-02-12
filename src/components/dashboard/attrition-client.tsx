@@ -18,6 +18,7 @@ interface AttritionRule {
 
 interface AttritionClientProps {
   eventId: string;
+  eventSlug: string;
   eventName: string;
   rules: AttritionRule[];
   totalRooms: number;
@@ -28,6 +29,7 @@ interface AttritionClientProps {
 
 export default function AttritionClient({
   eventId,
+  eventSlug,
   eventName,
   rules,
   totalRooms,
@@ -48,6 +50,13 @@ export default function AttritionClient({
     const now = new Date();
     const target = new Date(date);
     return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  const URGENCY_BORDER: Record<string, string> = {
+    "bg-red-500": "border-red-500",
+    "bg-amber-500": "border-amber-500",
+    "bg-yellow-500": "border-yellow-500",
+    "bg-green-500": "border-green-500",
   };
 
   const getUrgency = (daysLeft: number) => {
@@ -77,7 +86,7 @@ export default function AttritionClient({
             isOutgoing: true,
           },
           {
-            text: `💰 Current rate: ₹${ratePerRoom.toLocaleString("en-IN")}/night\n\n🔗 Book here: ${typeof window !== "undefined" ? window.location.origin : ""}/event/...`,
+            text: `💰 Current rate: ₹${ratePerRoom.toLocaleString("en-IN")}/night\n\n🔗 Book here: ${typeof window !== "undefined" ? window.location.origin : ""}/event/${eventSlug}`,
             isOutgoing: true,
           },
         ]);
@@ -223,7 +232,7 @@ export default function AttritionClient({
                 return (
                   <div key={rule.id} className="relative flex gap-4">
                     {/* Timeline dot */}
-                    <div className={`relative z-10 h-12 w-12 rounded-xl ${urgency.bg} flex items-center justify-center shrink-0 border ${rule.isTriggered ? "border-gray-200" : "border-" + urgency.color.replace("bg-", "")}`}>
+                    <div className={`relative z-10 h-12 w-12 rounded-xl ${urgency.bg} flex items-center justify-center shrink-0 border ${rule.isTriggered ? "border-gray-200" : URGENCY_BORDER[urgency.color] || "border-gray-500"}`}>
                       <div className={`h-4 w-4 rounded-full ${urgency.color}`} />
                     </div>
 

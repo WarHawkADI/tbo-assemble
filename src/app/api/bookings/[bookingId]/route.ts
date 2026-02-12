@@ -82,12 +82,26 @@ export async function PATCH(
 
     // Allow cancellation
     if (body.status === "cancelled") {
+      // Guard against cancelling checked-in bookings
+      if (booking.checkedIn) {
+        return NextResponse.json({ error: "Cannot cancel a checked-in booking" }, { status: 400 });
+      }
+
+      // Guard against cancelling for past events
+      if (new Date(booking.event.checkOut) < new Date()) {
+        return NextResponse.json({ error: "Cannot cancel booking for a past event" }, { status: 400 });
+      }
+
       // Only decrement if the booking was not already cancelled
       if (booking.status !== "cancelled") {
-        await prisma.roomBlock.update({
-          where: { id: booking.roomBlockId },
-          data: { bookedQty: { decrement: 1 } },
-        });
+        // Protect bookedQty from going negative
+        const currentBlock = await prisma.roomBlock.findUnique({ where: { id: booking.roomBlockId } });
+        if (currentBlock && currentBlock.bookedQty > 0) {
+          await prisma.roomBlock.update({
+            where: { id: booking.roomBlockId },
+            data: { bookedQty: { decrement: 1 } },
+          });
+        }
       }
 
       const updated = await prisma.booking.update({

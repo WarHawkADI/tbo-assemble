@@ -21,7 +21,7 @@ export function DashboardHeader() {
   const { user } = useAuth();
   const [showNotif, setShowNotif] = useState(false);
   const [notifications, setNotifications] = useState(NOTIFICATIONS);
-  const [collabCount] = useState(Math.floor(Math.random() * 2) + 2);
+  const [collabCount] = useState(3);
   const notifRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = notifications.filter((n) => n.unread).length;
@@ -38,7 +38,14 @@ export function DashboardHeader() {
       }
     };
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    const escHandler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowNotif(false);
+    };
+    document.addEventListener("keydown", escHandler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", escHandler);
+    };
   }, []);
 
   return (
@@ -73,10 +80,13 @@ export function DashboardHeader() {
           <button
             onClick={() => setShowNotif(!showNotif)}
             className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-100 hover:border-gray-300 dark:hover:border-zinc-600 transition-all shadow-sm"
+            aria-label="Notifications"
+            aria-expanded={showNotif}
+            aria-haspopup="true"
           >
             <Bell className="h-4 w-4" />
             {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white ring-2 ring-white dark:ring-zinc-800">
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white ring-2 ring-white dark:ring-zinc-800" aria-live="polite">
                 {unreadCount}
               </span>
             )}
@@ -84,7 +94,7 @@ export function DashboardHeader() {
 
           {/* Notification Dropdown */}
           {showNotif && (
-            <div className="absolute right-0 top-12 w-80 sm:w-96 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 shadow-2xl z-50 overflow-hidden animate-fade-in">
+            <div className="absolute right-0 top-12 w-80 sm:w-96 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 shadow-2xl z-50 overflow-hidden animate-fade-in" role="dialog" aria-label="Notifications">
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-zinc-800">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-zinc-100">Notifications</h3>
                 <div className="flex items-center gap-2">
@@ -99,6 +109,7 @@ export function DashboardHeader() {
                   <button
                     onClick={() => setShowNotif(false)}
                     className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800"
+                    aria-label="Close notifications"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -122,7 +133,7 @@ export function DashboardHeader() {
                 ))}
               </div>
               <div className="px-4 py-2.5 border-t border-gray-100 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-800/30">
-                <p className="text-[10px] text-center text-gray-400 dark:text-zinc-500">All caught up! 🎉</p>
+                <p className="text-[10px] text-center text-gray-400 dark:text-zinc-500">{unreadCount === 0 ? "All caught up! 🎉" : `${unreadCount} unread notification${unreadCount > 1 ? "s" : ""}`}</p>
               </div>
             </div>
           )}

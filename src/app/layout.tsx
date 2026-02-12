@@ -25,6 +25,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://tbo-assemble.vercel.app"),
   title: {
     default: "TBO Assemble | The Operating System for Group Travel",
     template: "%s | TBO Assemble",
@@ -52,8 +53,8 @@ export const metadata: Metadata = {
     images: [
       {
         url: "/logo.png",
-        width: 512,
-        height: 512,
+        width: 1200,
+        height: 630,
         alt: "TBO Assemble Logo",
       },
     ],
@@ -84,6 +85,7 @@ export default function RootLayout({
     <html lang="en-IN" suppressHydrationWarning>
       <head>
         <ThemeScript />
+        <meta name="format-detection" content="telephone=no" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
@@ -97,15 +99,17 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              console.log(
-                "%c🏨 TBO Assemble %c Group Travel OS ",
-                "background: linear-gradient(135deg, #ff6b35, #e55a2b); color: white; font-size: 16px; font-weight: bold; padding: 8px 12px; border-radius: 6px 0 0 6px;",
-                "background: #1e293b; color: #94a3b8; font-size: 12px; padding: 8px 12px; border-radius: 0 6px 6px 0;"
-              );
-              console.log(
-                "%cBuilt with ❤️ by Team IIITDards for VOYAGEHACK 3.0\\nPowered by Next.js 16 · GPT-4o · Prisma 7 · Tailwind v4",
-                "color: #64748b; font-size: 11px; line-height: 1.6;"
-              );
+              if (typeof window !== 'undefined' && location.hostname === 'localhost') {
+                console.log(
+                  "%c🏨 TBO Assemble %c Group Travel OS ",
+                  "background: linear-gradient(135deg, #ff6b35, #e55a2b); color: white; font-size: 16px; font-weight: bold; padding: 8px 12px; border-radius: 6px 0 0 6px;",
+                  "background: #1e293b; color: #94a3b8; font-size: 12px; padding: 8px 12px; border-radius: 0 6px 6px 0;"
+                );
+                console.log(
+                  "%cBuilt with ❤️ by Team IIITDards for VOYAGEHACK 3.0\\nPowered by Next.js 16 · GPT-4o · Prisma 7 · Tailwind v4",
+                  "color: #64748b; font-size: 11px; line-height: 1.6;"
+                );
+              }
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
                   navigator.serviceWorker.register('/sw.js').catch(function() {});

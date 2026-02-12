@@ -37,6 +37,7 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; dot: string; lab
   active: { bg: "bg-blue-50 dark:bg-blue-900/30", text: "text-blue-700 dark:text-blue-300", dot: "bg-blue-500", label: "Active" },
   published: { bg: "bg-emerald-50 dark:bg-emerald-900/30", text: "text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500", label: "Published" },
   completed: { bg: "bg-purple-50 dark:bg-purple-900/30", text: "text-purple-700 dark:text-purple-300", dot: "bg-purple-500", label: "Completed" },
+  cancelled: { bg: "bg-red-50 dark:bg-red-900/30", text: "text-red-700 dark:text-red-300", dot: "bg-red-500", label: "Cancelled" },
 };
 
 export function CalendarView({ events, onEventClick }: CalendarViewProps) {
@@ -111,13 +112,13 @@ export function CalendarView({ events, onEventClick }: CalendarViewProps) {
   };
 
   // Build calendar grid
-  const cells = [];
+  const cells: React.ReactNode[] = [];
 
   // Previous month trailing days
   for (let i = 0; i < firstDay; i++) {
     const day = prevMonthDays - firstDay + 1 + i;
     cells.push(
-      <div key={`prev-${i}`} className="min-h-[100px] sm:min-h-[110px] p-1.5 sm:p-2 bg-zinc-50/60 dark:bg-zinc-900/40">
+      <div key={`prev-${i}`} role="gridcell" className="min-h-[100px] sm:min-h-[110px] p-1.5 sm:p-2 bg-zinc-50/60 dark:bg-zinc-900/40">
         <span className="text-xs font-medium text-zinc-300 dark:text-zinc-700">{day}</span>
       </div>
     );
@@ -134,6 +135,8 @@ export function CalendarView({ events, onEventClick }: CalendarViewProps) {
       <div
         key={day}
         onClick={() => setSelectedDay(day === selectedDay ? null : day)}
+        aria-current={isToday ? "date" : undefined}
+        role="gridcell"
         className={`min-h-[100px] sm:min-h-[110px] p-1.5 sm:p-2 cursor-pointer transition-all duration-150 group relative ${
           isSelected
             ? "bg-orange-50/80 dark:bg-orange-950/20 ring-2 ring-orange-400 dark:ring-orange-600 ring-inset"
@@ -211,7 +214,7 @@ export function CalendarView({ events, onEventClick }: CalendarViewProps) {
   const remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
   for (let i = 1; i <= remaining; i++) {
     cells.push(
-      <div key={`next-${i}`} className="min-h-[100px] sm:min-h-[110px] p-1.5 sm:p-2 bg-zinc-50/60 dark:bg-zinc-900/40">
+      <div key={`next-${i}`} role="gridcell" className="min-h-[100px] sm:min-h-[110px] p-1.5 sm:p-2 bg-zinc-50/60 dark:bg-zinc-900/40">
         <span className="text-xs font-medium text-zinc-300 dark:text-zinc-700">{i}</span>
       </div>
     );
@@ -277,8 +280,12 @@ export function CalendarView({ events, onEventClick }: CalendarViewProps) {
       </div>
 
       {/* Calendar grid */}
-      <div className="grid grid-cols-7 rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700/80 divide-x divide-y divide-zinc-100 dark:divide-zinc-800/60">
-        {cells}
+      <div role="grid" className="grid grid-cols-7 rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700/80 divide-x divide-y divide-zinc-100 dark:divide-zinc-800/60">
+        {Array.from({ length: Math.ceil(cells.length / 7) }, (_, rowIdx) => (
+          <div key={`row-${rowIdx}`} role="row" className="contents">
+            {cells.slice(rowIdx * 7, rowIdx * 7 + 7)}
+          </div>
+        ))}
       </div>
 
       {/* Legend */}

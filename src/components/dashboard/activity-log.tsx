@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import {
   Activity,
   UserPlus,
+  Users,
   Calendar,
   Send,
   CheckCircle,
@@ -38,6 +39,8 @@ const actionIcons: Record<string, React.ElementType> = {
   booking_cancelled: AlertTriangle,
   waitlist_joined: ClipboardList,
   auto_allocate: Activity,
+  guest_updated: Users,
+  guest_removed: Users,
 };
 
 const actionColors: Record<string, string> = {
@@ -51,6 +54,8 @@ const actionColors: Record<string, string> = {
   booking_cancelled: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400",
   waitlist_joined: "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400",
   auto_allocate: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400",
+  guest_updated: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400",
+  guest_removed: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400",
 };
 
 export function ActivityLog({ eventId }: ActivityLogProps) {
@@ -58,7 +63,7 @@ export function ActivityLog({ eventId }: ActivityLogProps) {
   const [loading, setLoading] = useState(true);
   const [actionFilter, setActionFilter] = useState<string>("all");
 
-  useEffect(() => {
+  const fetchActivity = () => {
     fetch(`/api/events/${eventId}/activity?limit=50`)
       .then((res) => res.json())
       .then((data) => {
@@ -66,6 +71,17 @@ export function ActivityLog({ eventId }: ActivityLogProps) {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchActivity();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId]);
+
+  useEffect(() => {
+    const interval = setInterval(() => { fetchActivity(); }, 30000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
   const exportActivityCSV = () => {
@@ -130,6 +146,7 @@ export function ActivityLog({ eventId }: ActivityLogProps) {
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value)}
             title="Filter by action type"
+            aria-label="Filter by action type"
             className="text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="all">All Actions ({logs.length})</option>
@@ -151,7 +168,7 @@ export function ActivityLog({ eventId }: ActivityLogProps) {
       {/* Timeline line */}
       <div className="absolute left-5 top-12 bottom-0 w-px bg-zinc-200 dark:bg-zinc-700" />
 
-      <div className="space-y-4">
+      <ol className="space-y-4 list-none">
         {filteredLogs.map((log) => {
           const Icon = actionIcons[log.action] || Activity;
           const colorClass =
@@ -160,7 +177,7 @@ export function ActivityLog({ eventId }: ActivityLogProps) {
           const relativeTime = getRelativeTime(time);
 
           return (
-            <div key={log.id} className="flex gap-3 relative">
+            <li key={log.id} className="flex gap-3 relative">
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 ${colorClass}`}
               >
@@ -173,7 +190,7 @@ export function ActivityLog({ eventId }: ActivityLogProps) {
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs text-zinc-400 dark:text-zinc-500 flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {relativeTime}
+                    <time dateTime={log.createdAt}>{relativeTime}</time>
                   </span>
                   <span className="text-xs text-zinc-300 dark:text-zinc-600">•</span>
                   <span className="text-xs text-zinc-500 dark:text-zinc-400">
@@ -181,10 +198,10 @@ export function ActivityLog({ eventId }: ActivityLogProps) {
                   </span>
                 </div>
               </div>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ol>
     </div>
   );
 }

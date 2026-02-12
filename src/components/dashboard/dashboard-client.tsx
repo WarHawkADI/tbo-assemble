@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +58,7 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [resettingDemo, setResettingDemo] = useState(false);
+  const [copyToast, setCopyToast] = useState("");
 
   // Set initial timestamp after mount to avoid hydration mismatch
   useEffect(() => {
@@ -184,11 +185,13 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
     return labels[type] || type;
   };
 
-  // Calculate totals
-  const totalRevenue = events.reduce((s, e) => s + e.totalRevenue, 0);
-  const totalGuests = events.reduce((s, e) => s + e.guestCount, 0);
-  const totalRooms = events.reduce((s, e) => s + e.totalRooms, 0);
-  const bookedRooms = events.reduce((s, e) => s + e.bookedRooms, 0);
+  // Calculate totals (memoized)
+  const { totalRevenue, totalGuests, totalRooms, bookedRooms } = useMemo(() => ({
+    totalRevenue: events.reduce((s, e) => s + e.totalRevenue, 0),
+    totalGuests: events.reduce((s, e) => s + e.guestCount, 0),
+    totalRooms: events.reduce((s, e) => s + e.totalRooms, 0),
+    bookedRooms: events.reduce((s, e) => s + e.bookedRooms, 0),
+  }), [events]);
 
   return (
     <div className="animate-fade-in">
@@ -286,6 +289,7 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             title="Filter by status"
+            aria-label="Filter by status"
             className="text-sm border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-2 bg-white dark:bg-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/20 focus:border-[#ff6b35]"
           >
             <option value="all">All Status</option>
@@ -298,6 +302,7 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
             title="Filter by type"
+            aria-label="Filter by type"
             className="text-sm border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-2 bg-white dark:bg-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/20 focus:border-[#ff6b35]"
           >
             <option value="all">All Types</option>
@@ -439,7 +444,12 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
                   <div className="px-5 pb-3">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-[10px] font-semibold text-gray-400 dark:text-zinc-500">Occupancy</span>
-                      <span className="text-[10px] font-bold" style={{ color: occupancy > 80 ? '#ef4444' : occupancy > 50 ? '#f59e0b' : event.primaryColor }}>{occupancy}%</span>
+                      <span className="text-[10px] font-bold" style={{ color: occupancy > 80 ? '#ef4444' : occupancy > 50 ? '#f59e0b' : event.primaryColor }}>
+                        {occupancy}%{" "}
+                        <span className="font-medium text-gray-400 dark:text-zinc-500">
+                          ({occupancy > 80 ? "High" : occupancy > 50 ? "Medium" : "Low"})
+                        </span>
+                      </span>
                     </div>
                     <div className="h-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                       <div
@@ -459,7 +469,10 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
                         e.preventDefault();
                         e.stopPropagation();
                         const url = `${window.location.origin}/event/${event.slug}`;
-                        navigator.clipboard.writeText(url);
+                        navigator.clipboard.writeText(url).then(() => {
+                          setCopyToast("Link copied!");
+                          setTimeout(() => setCopyToast(""), 2000);
+                        });
                       }}
                       className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-gray-400 dark:text-zinc-500 hover:text-[#ff6b35] dark:hover:text-[#ff6b35] transition-colors"
                       title="Copy microsite link"
@@ -489,6 +502,13 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
               </Link>
             );
           })}
+        </div>
+      )}
+
+      {/* Copy toast notification */}
+      {copyToast && (
+        <div className="fixed bottom-4 right-4 z-50 px-4 py-2 bg-green-600 text-white text-sm rounded-lg shadow-lg animate-fade-in">
+          {copyToast}
         </div>
       )}
     </div>

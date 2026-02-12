@@ -26,6 +26,25 @@ export async function POST(request: Request) {
     const data = await request.json();
     const { contract, invite } = data;
 
+    // Date validation
+    const checkInDate = new Date(contract?.checkIn || Date.now());
+    const checkOutDate = new Date(contract?.checkOut || Date.now() + 3 * 86400000);
+    if (checkInDate >= checkOutDate) {
+      return NextResponse.json({ error: "Check-in date must be before check-out date" }, { status: 400 });
+    }
+    if (checkInDate < new Date()) {
+      return NextResponse.json({ error: "Check-in date cannot be in the past" }, { status: 400 });
+    }
+
+    // Rate validation — ensure room rates and quantities are positive numbers
+    if (contract?.rooms) {
+      for (const room of contract.rooms) {
+        if (!room.rate || room.rate <= 0 || !room.quantity || room.quantity <= 0) {
+          return NextResponse.json({ error: "Room rates and quantities must be positive numbers" }, { status: 400 });
+        }
+      }
+    }
+
     // Ensure we have a demo agent
     let agent = await prisma.agent.findFirst();
     if (!agent) {

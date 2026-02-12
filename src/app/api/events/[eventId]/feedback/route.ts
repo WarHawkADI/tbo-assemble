@@ -38,6 +38,14 @@ export async function POST(
       );
     }
 
+    // Validate rating range (1-5)
+    if (rating < 1 || rating > 5) {
+      return NextResponse.json({ error: "Rating must be between 1 and 5" }, { status: 400 });
+    }
+
+    // Sanitize comment — strip HTML tags
+    const cleanComment = comment?.replace(/<[^>]*>/g, '') || '';
+
     const feedback = await prisma.feedback.create({
       data: {
         eventId,
@@ -46,7 +54,7 @@ export async function POST(
         rating,
         stayRating: stayRating || null,
         eventRating: eventRating || null,
-        comment: comment || null,
+        comment: cleanComment || null,
       },
     });
 

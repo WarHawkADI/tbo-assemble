@@ -46,7 +46,13 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [loading, setLoading] = useState(false);
   const [importResult, setImportResult] = useState<{ imported?: number; failed?: number } | null>(null);
+  const [toast, setToast] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const showToast = (message: string) => {
+    setToast(message);
+    setTimeout(() => setToast(""), 2500);
+  };
 
   // Form states
   const [formData, setFormData] = useState({
@@ -90,6 +96,7 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
       const res = await fetch(`/api/guests?id=${guestId}`, { method: "DELETE" });
       if (res.ok) {
         setGuests(guests.filter((g) => g.id !== guestId));
+        showToast("Guest deleted successfully");
       }
     } catch (error) {
       console.error("Error deleting guest:", error);
@@ -146,8 +153,21 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
     }
   };
 
-  const handleExportCSV = () => {
-    window.open(`/api/guests/import?eventId=${eventId}`, "_blank");
+  const handleExportCSV = async () => {
+    try {
+      const res = await fetch(`/api/guests/import?eventId=${eventId}`);
+      if (!res.ok) throw new Error("Export failed");
+      const csvContent = await res.text();
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `guests-${eventId}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error exporting CSV:", error);
+    }
   };
 
   // Filter guests
@@ -204,7 +224,7 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
         </Card>
         <Card className="border-0 shadow-sm">
           <CardContent className="p-4">
-            <p className="text-sm text-gray-500 dark:text-zinc-400">Pending</p>
+            <p className="text-sm text-gray-500 dark:text-zinc-400">Invited</p>
             <p className="text-2xl font-bold mt-1 text-amber-600">{invited}</p>
           </CardContent>
         </Card>
@@ -234,6 +254,7 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             title="Filter by status"
+            aria-label="Filter guests by status"
             className="text-sm border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-2 bg-white dark:bg-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/20 focus:border-[#ff6b35]"
           >
             <option value="all">All Status</option>
@@ -446,6 +467,7 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
                             onClick={() => handleDeleteGuest(guest.id)}
                             className="text-gray-400 dark:text-zinc-500 hover:text-red-600 transition-colors p-1"
                             title="Delete guest"
+                            aria-label={`Delete guest ${guest.name}`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -458,6 +480,13 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
             </CardContent>
           </Card>
         ))
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className="fixed bottom-4 right-4 z-50 px-4 py-2 bg-green-600 text-white text-sm rounded-lg shadow-lg animate-fade-in">
+          {toast}
+        </div>
       )}
     </div>
   );

@@ -49,6 +49,7 @@ export default async function AttritionPage({
 
       <AttritionClient
         eventId={eventId}
+        eventSlug={event.slug}
         eventName={event.name}
         rules={event.attritionRules.map((r) => ({
           id: r.id,

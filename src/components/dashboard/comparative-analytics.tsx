@@ -38,6 +38,7 @@ const COLORS = [
 ];
 
 export function ComparativeAnalytics({ events }: ComparativeAnalyticsProps) {
+  const isDark = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
   const [metric, setMetric] = useState<"guests" | "rooms" | "revenue" | "occupancy">("guests");
 
   if (events.length === 0) {
@@ -133,14 +134,16 @@ export function ComparativeAnalytics({ events }: ComparativeAnalyticsProps) {
           </h3>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={barData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#27272a" : "#e5e7eb"} />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : undefined }} />
+              <YAxis tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : undefined }} />
               <Tooltip
                 contentStyle={{
                   borderRadius: "8px",
-                  border: "1px solid #e5e7eb",
+                  border: `1px solid ${isDark ? '#3f3f46' : '#e5e7eb'}`,
                   fontSize: "12px",
+                  backgroundColor: isDark ? '#18181b' : '#fff',
+                  color: isDark ? '#fafafa' : undefined,
                 }}
               />
               <Legend />
@@ -192,8 +195,10 @@ export function ComparativeAnalytics({ events }: ComparativeAnalyticsProps) {
               <Tooltip
                 contentStyle={{
                   borderRadius: "8px",
-                  border: "1px solid #e5e7eb",
+                  border: `1px solid ${isDark ? '#3f3f46' : '#e5e7eb'}`,
                   fontSize: "12px",
+                  backgroundColor: isDark ? '#18181b' : '#fff',
+                  color: isDark ? '#fafafa' : undefined,
                 }}
               />
             </PieChart>

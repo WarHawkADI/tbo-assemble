@@ -44,7 +44,7 @@ model Event {
   discountRules   DiscountRule[]
   status          String          @default("draft")
   createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  updatedAt       DateTime        @default(now()) @updatedAt
 }
 
 model RoomBlock {
@@ -62,6 +62,9 @@ model RoomBlock {
   bookings    Booking[]
   waitlists   Waitlist[]
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  @@index([eventId])
 }
 
 model Guest {
@@ -81,6 +84,9 @@ model Guest {
   bookings         Booking[]
   nudges           Nudge[]
   createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
+
+  @@index([eventId])
 }
 
 model AddOn {
@@ -93,6 +99,9 @@ model AddOn {
   event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
   bookingAddOns BookingAddOn[]
   createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @default(now()) @updatedAt
+
+  @@index([eventId])
 }
 
 model Booking {
@@ -109,6 +118,10 @@ model Booking {
   checkedIn   Boolean        @default(false)
   checkedInAt DateTime?
   createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @default(now()) @updatedAt
+
+  @@index([eventId])
+  @@index([guestId])
 }
 
 model BookingAddOn {
@@ -118,6 +131,9 @@ model BookingAddOn {
   addOnId   String
   addOn     AddOn   @relation(fields: [addOnId], references: [id])
   price     Float
+  quantity  Int     @default(1)
+
+  @@index([bookingId])
 }
 
 model AttritionRule {
@@ -152,6 +168,9 @@ model Waitlist {
   event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
   status      String    @default("waiting")
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  @@index([eventId])
 }
 
 model ActivityLog {
@@ -162,6 +181,8 @@ model ActivityLog {
   details   String
   actor     String   @default("system")
   createdAt DateTime @default(now())
+
+  @@index([eventId])
 }
 
 model Feedback {
@@ -175,6 +196,8 @@ model Feedback {
   eventRating Int?
   comment     String?
   createdAt   DateTime @default(now())
+
+  @@index([eventId])
 }
 
 model DiscountRule {
@@ -186,4 +209,7 @@ model DiscountRule {
   description String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([eventId])
 }

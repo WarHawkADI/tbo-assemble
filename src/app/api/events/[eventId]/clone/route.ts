@@ -10,7 +10,12 @@ export async function POST(
   try {
     const { eventId } = await params;
     const body = await request.json();
-    const newName = body.name || "Copy";
+    const newName = body.name;
+
+    // Validate newName is not empty
+    if (!newName?.trim()) {
+      return NextResponse.json({ error: "Event name required" }, { status: 400 });
+    }
 
     const original = await prisma.event.findUnique({
       where: { id: eventId },

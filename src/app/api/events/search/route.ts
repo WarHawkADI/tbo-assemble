@@ -9,14 +9,18 @@ export async function GET(request: Request) {
     const status = searchParams.get("status");
     const type = searchParams.get("type");
 
+    const slug = searchParams.get("slug");
+
     const where: {
       status?: string;
       type?: string;
+      slug?: string;
       OR?: { name?: { contains: string }; venue?: { contains: string }; location?: { contains: string } }[];
     } = {};
 
     if (status) where.status = status;
     if (type) where.type = type;
+    if (slug) where.slug = slug;
     if (query) {
       where.OR = [
         { name: { contains: query } },

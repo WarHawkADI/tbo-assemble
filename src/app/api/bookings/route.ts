@@ -13,7 +13,14 @@ export async function POST(request: Request) {
       proximityRequest,
       selectedAddOns,
       totalAmount,
+      specialRequests,
     } = await request.json();
+
+    // Validate eventId exists and event is active/published
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event || !["active", "published"].includes(event.status)) {
+      return NextResponse.json({ error: "Event not available for booking" }, { status: 400 });
+    }
 
     // Duplicate booking prevention: check if this email already has a booking for this event
     if (guestEmail) {
@@ -54,52 +61,80 @@ export async function POST(request: Request) {
       ? Math.round(totalAmount * (1 - discountPct / 100))
       : totalAmount;
 
-    // Create guest
-    const guest = await prisma.guest.create({
-      data: {
-        name: guestName,
-        email: guestEmail || null,
-        phone: guestPhone || null,
-        group: guestGroup || null,
-        proximityRequest: proximityRequest || null,
-        status: "confirmed",
-        eventId,
-      },
-    });
+    // Server-side price validation: verify totalAmount is reasonable
+    const nights = Math.ceil(
+      (new Date(event.checkOut).getTime() - new Date(event.checkIn).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    const expectedBase = roomBlock.rate * nights;
+    if (totalAmount < 0 || totalAmount > expectedBase * 3) {
+      return NextResponse.json({ error: "Invalid total amount" }, { status: 400 });
+    }
 
-    // Create booking (with discount applied)
-    const booking = await prisma.booking.create({
-      data: {
-        guestId: guest.id,
-        eventId,
-        roomBlockId,
-        totalAmount: finalAmount,
-        status: "confirmed",
-      },
-    });
-
-    // Create booking add-ons
+    // Validate addOns belong to the event
     if (selectedAddOns && selectedAddOns.length > 0) {
-      for (const addOnId of selectedAddOns) {
-        const addOn = await prisma.addOn.findUnique({ where: { id: addOnId } });
-        if (addOn) {
-          await prisma.bookingAddOn.create({
-            data: {
-              bookingId: booking.id,
-              addOnId,
-              price: addOn.isIncluded ? 0 : addOn.price,
-            },
-          });
-        }
+      const validAddOns = await prisma.addOn.findMany({
+        where: { id: { in: selectedAddOns }, eventId },
+      });
+      if (validAddOns.length !== selectedAddOns.length) {
+        return NextResponse.json(
+          { error: "One or more selected add-ons do not belong to this event" },
+          { status: 400 }
+        );
       }
     }
 
-    // Update room block booked count
-    await prisma.roomBlock.update({
-      where: { id: roomBlockId },
-      data: {
-        bookedQty: { increment: 1 },
-      },
+    // Wrap booking creation in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create guest (save specialRequests to notes)
+      const guest = await tx.guest.create({
+        data: {
+          name: guestName,
+          email: guestEmail || null,
+          phone: guestPhone || null,
+          group: guestGroup || null,
+          proximityRequest: proximityRequest || null,
+          notes: specialRequests || null,
+          status: "confirmed",
+          eventId,
+        },
+      });
+
+      // Create booking (with discount applied)
+      const booking = await tx.booking.create({
+        data: {
+          guestId: guest.id,
+          eventId,
+          roomBlockId,
+          totalAmount: finalAmount,
+          status: "confirmed",
+        },
+      });
+
+      // Create booking add-ons
+      if (selectedAddOns && selectedAddOns.length > 0) {
+        for (const addOnId of selectedAddOns) {
+          const addOn = await tx.addOn.findUnique({ where: { id: addOnId } });
+          if (addOn) {
+            await tx.bookingAddOn.create({
+              data: {
+                bookingId: booking.id,
+                addOnId,
+                price: addOn.isIncluded ? 0 : addOn.price,
+              },
+            });
+          }
+        }
+      }
+
+      // Update room block booked count
+      await tx.roomBlock.update({
+        where: { id: roomBlockId },
+        data: {
+          bookedQty: { increment: 1 },
+        },
+      });
+
+      return { guest, booking };
     });
 
     // Log activity
@@ -108,16 +143,16 @@ export async function POST(request: Request) {
       data: {
         eventId,
         action: "booking_created",
-        details: `${guestName} booked ${booking.id.slice(0, 8)} — ₹${finalAmount.toLocaleString("en-IN")}${discountNote}`,
+        details: `${guestName} booked ${result.booking.id.slice(0, 8)} — ₹${finalAmount.toLocaleString("en-IN")}${discountNote}`,
         actor: guestName,
       },
     });
 
     return NextResponse.json({
       success: true,
-      booking: { id: booking.id },
-      bookingId: booking.id,
-      guestId: guest.id,
+      booking: { id: result.booking.id },
+      bookingId: result.booking.id,
+      guestId: result.guest.id,
       discount: discountPct > 0 ? { percent: discountPct, originalAmount: totalAmount, finalAmount } : null,
     });
   } catch (error) {

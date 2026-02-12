@@ -7,13 +7,42 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Sparkles, Upload, FileText, Image, Check, Loader2, Zap, FileCheck, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
+interface ParsedEventData {
+  invite?: {
+    eventName?: string;
+    eventType?: string;
+    primaryColor?: string;
+    secondaryColor?: string;
+    accentColor?: string;
+  };
+  contract?: {
+    venue?: string;
+    location?: string;
+    checkIn?: string;
+    checkOut?: string;
+    rooms?: Array<{
+      roomType: string;
+      rate?: number;
+      quantity?: number;
+      floor?: string;
+      wing?: string;
+    }>;
+    addOns?: Array<{
+      name: string;
+      isIncluded?: boolean;
+      price?: number;
+    }>;
+  };
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState<"upload" | "processing" | "review" | "done">("upload");
   const [contractFile, setContractFile] = useState<File | null>(null);
   const [inviteFile, setInviteFile] = useState<File | null>(null);
-  const [parsedData, setParsedData] = useState<any>(null);
+  const [parsedData, setParsedData] = useState<ParsedEventData | null>(null);
   const [error, setError] = useState<string>("");
+  const [isDragging, setIsDragging] = useState(false);
 
   const handleProcess = async () => {
     setStep("processing");
@@ -110,6 +139,7 @@ export default function OnboardingPage() {
             <div key={s.label} className="flex items-center flex-1">
               <div className="flex items-center gap-3">
                 <div
+                  aria-current={isActive ? "step" : undefined}
                   className={`flex h-10 w-10 items-center justify-center rounded-xl text-sm font-semibold transition-all ${
                     isDone
                       ? "bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-200/50 dark:shadow-emerald-900/30"
@@ -141,7 +171,13 @@ export default function OnboardingPage() {
       {/* Upload Step */}
       {step === "upload" && (
         <div className="space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div
+            className={`grid grid-cols-1 md:grid-cols-2 gap-5 rounded-xl transition-all ${isDragging ? 'border-2 border-orange-500 bg-orange-50 dark:bg-orange-950/20' : ''}`}
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragEnter={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if (f) { if (f.size > 10 * 1024 * 1024) { alert("File too large. Max 10MB."); return; } if (f.type === 'application/pdf') { setContractFile(f); } else { setInviteFile(f); } } }}
+          >
             {/* Contract Upload */}
             <Card className="border-0 shadow-sm overflow-hidden">
               <CardHeader className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border-b border-blue-100 dark:border-blue-800/40">
@@ -180,7 +216,11 @@ export default function OnboardingPage() {
                     type="file"
                     accept=".pdf,.png,.jpg,.jpeg"
                     className="hidden"
-                    onChange={(e) => setContractFile(e.target.files?.[0] || null)}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      if (file && file.size > 10 * 1024 * 1024) { alert("File too large. Max 10MB."); return; }
+                      setContractFile(file);
+                    }}
                   />
                 </label>
               </CardContent>
@@ -224,7 +264,11 @@ export default function OnboardingPage() {
                     type="file"
                     accept=".png,.jpg,.jpeg,.webp"
                     className="hidden"
-                    onChange={(e) => setInviteFile(e.target.files?.[0] || null)}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      if (file && file.size > 10 * 1024 * 1024) { alert("File too large. Max 10MB."); return; }
+                      setInviteFile(file);
+                    }}
                   />
                 </label>
               </CardContent>
@@ -339,8 +383,8 @@ export default function OnboardingPage() {
               <div className="mt-5 pt-4 border-t border-gray-100 dark:border-zinc-700">
                 <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide mb-2 block">Theme Palette</label>
                 <div className="flex gap-3">
-                  {[parsedData.invite?.primaryColor, parsedData.invite?.secondaryColor, parsedData.invite?.accentColor].map(
-                    (c: string, i: number) => (
+                  {[parsedData.invite?.primaryColor, parsedData.invite?.secondaryColor, parsedData.invite?.accentColor].filter(Boolean).map(
+                    (c, i) => (
                       <div key={i} className="flex items-center gap-2">
                         <div
                           className="h-10 w-10 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-700"

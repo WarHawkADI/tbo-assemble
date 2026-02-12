@@ -83,6 +83,14 @@ export function WhatsAppSimulator({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const isDark = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
+
   const initials = recipientName
     .split(" ")
     .map((n) => n[0])
@@ -90,11 +98,11 @@ export function WhatsAppSimulator({
     .slice(0, 2);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
       <div className="w-full max-w-md rounded-2xl overflow-hidden shadow-2xl bg-white dark:bg-zinc-900 flex flex-col" style={{ height: "600px" }}>
         {/* Header */}
         <div className="bg-[#075E54] dark:bg-[#1F2C33] text-white px-4 py-3 flex items-center gap-3">
-          <button onClick={onClose} className="hover:opacity-80">
+          <button onClick={onClose} className="hover:opacity-80" aria-label="Close WhatsApp preview">
             <X className="w-5 h-5" />
           </button>
           <div className="w-10 h-10 rounded-full bg-[#25D366] flex items-center justify-center text-sm font-bold">
@@ -118,7 +126,7 @@ export function WhatsAppSimulator({
           className="flex-1 overflow-y-auto p-4 space-y-2"
           style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d4d4d4' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-            backgroundColor: "#ECE5DD",
+            backgroundColor: isDark ? "#1a1a2e" : "#ECE5DD",
           }}
         >
           {/* Date badge */}
@@ -177,9 +185,7 @@ export function WhatsAppSimulator({
 
         {/* Input Area */}
         <div className="bg-[#F0F0F0] dark:bg-[#1F2C33] px-3 py-2 flex items-center gap-2">
-          <div className="flex-1 bg-white dark:bg-zinc-700 rounded-full px-4 py-2 text-sm text-zinc-400">
-            Type a message
-          </div>
+          <input type="text" disabled placeholder="Type a message..." className="flex-1 px-3 py-2 text-sm bg-white dark:bg-zinc-700 rounded-full text-gray-400" aria-label="Message input (preview only)" />
           <div className="w-10 h-10 bg-[#25D366] rounded-full flex items-center justify-center">
             <Send className="w-4 h-4 text-white" />
           </div>

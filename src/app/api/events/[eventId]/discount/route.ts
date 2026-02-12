@@ -37,6 +37,16 @@ export async function POST(
       );
     }
 
+    // Validate discountPct range (0 < discountPct <= 100)
+    if (discountPct <= 0 || discountPct > 100) {
+      return NextResponse.json({ error: "Discount percentage must be between 0 and 100" }, { status: 400 });
+    }
+
+    // Validate minRooms is positive
+    if (minRooms <= 0) {
+      return NextResponse.json({ error: "Minimum rooms must be greater than 0" }, { status: 400 });
+    }
+
     const rule = await prisma.discountRule.create({
       data: {
         eventId,

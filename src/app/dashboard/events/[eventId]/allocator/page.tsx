@@ -42,11 +42,14 @@ export default async function AllocatorPage({
         guests={event.guests.map((g) => ({
           id: g.id,
           name: g.name,
+          email: g.email,
+          phone: g.phone,
           group: g.group,
           status: g.status,
           proximityRequest: g.proximityRequest,
           allocatedFloor: g.allocatedFloor,
           allocatedWing: g.allocatedWing,
+          allocatedRoom: g.allocatedRoom,
         }))}
         roomBlocks={event.roomBlocks.map((r) => ({
           id: r.id,

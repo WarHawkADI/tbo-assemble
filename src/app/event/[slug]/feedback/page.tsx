@@ -21,12 +21,13 @@ export default function FeedbackFormPage() {
   const [comment, setComment] = useState("");
 
   useEffect(() => {
-    fetch(`/api/events/search?slug=${params.slug}`)
+    fetch(`/api/events/search?q=${encodeURIComponent(params.slug)}`)
       .then((res) => res.json())
-      .then((data) => {
-        if (data.id) {
-          setEventId(data.id);
-          setEventName(data.name);
+      .then((data: { id: string; name: string; slug: string }[]) => {
+        const event = Array.isArray(data) ? data.find((e) => e.slug === params.slug) : null;
+        if (event) {
+          setEventId(event.id);
+          setEventName(event.name);
         }
       })
       .catch(() => {})

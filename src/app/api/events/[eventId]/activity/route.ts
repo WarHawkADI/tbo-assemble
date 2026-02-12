@@ -9,7 +9,7 @@ export async function GET(
   try {
     const { eventId } = await params;
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get("limit") || "50");
+    const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 200);
 
     const logs = await prisma.activityLog.findMany({
       where: { eventId },

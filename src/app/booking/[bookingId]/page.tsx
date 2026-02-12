@@ -49,7 +49,7 @@ interface BookingDetail {
   };
   addOns: {
     addOn: { name: string; price: number };
-    quantity: number;
+    price: number;
   }[];
   calculated: {
     nights: number;
@@ -309,10 +309,10 @@ export default function BookingSelfServicePage() {
             {booking.addOns.map((ba, i) => (
               <div key={i} className="flex justify-between text-sm">
                 <span className="text-zinc-600 dark:text-zinc-400">
-                  {ba.addOn.name} × {ba.quantity}
+                  {ba.addOn.name}
                 </span>
                 <span className="text-zinc-800 dark:text-zinc-200">
-                  ₹{(ba.addOn.price * ba.quantity).toLocaleString("en-IN")}
+                  {ba.price === 0 ? 'Free' : `₹${ba.price.toLocaleString("en-IN")}`}
                 </span>
               </div>
             ))}
@@ -364,18 +364,25 @@ export default function BookingSelfServicePage() {
           </button>
         </div>
         {booking.status !== "cancelled" && (
-          <button
-            onClick={handleCancel}
-            disabled={cancelling}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 font-medium rounded-xl transition-colors text-sm"
-          >
-            {cancelling ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <XCircle className="w-4 h-4" />
-            )}
-            Cancel Booking
-          </button>
+          booking.checkedIn ? (
+            <div className="w-full flex items-center justify-center gap-2 py-3 bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500 font-medium rounded-xl text-sm cursor-not-allowed">
+              <CheckCircle className="w-4 h-4" />
+              Already checked in — cannot cancel
+            </div>
+          ) : (
+            <button
+              onClick={handleCancel}
+              disabled={cancelling}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 font-medium rounded-xl transition-colors text-sm"
+            >
+              {cancelling ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <XCircle className="w-4 h-4" />
+              )}
+              Cancel Booking
+            </button>
+          )
         )}
       </div>
     </div>

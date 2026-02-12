@@ -26,6 +26,11 @@ export async function POST(
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
 
+    // Guard against upgrading cancelled bookings
+    if (booking.status === "cancelled") {
+      return NextResponse.json({ error: "Cannot upgrade a cancelled booking" }, { status: 400 });
+    }
+
     const newRoomBlock = await prisma.roomBlock.findUnique({
       where: { id: newRoomBlockId },
       include: { bookings: true },
@@ -38,8 +43,16 @@ export async function POST(
       );
     }
 
-    // Check capacity
-    if (newRoomBlock.bookings.length >= newRoomBlock.totalQty) {
+    // Verify newRoomBlockId belongs to same event
+    if (newRoomBlock.eventId !== booking.eventId) {
+      return NextResponse.json(
+        { error: "Target room block does not belong to the same event" },
+        { status: 400 }
+      );
+    }
+
+    // Check capacity using bookedQty
+    if (newRoomBlock.bookedQty >= newRoomBlock.totalQty) {
       return NextResponse.json(
         { error: "No availability in the target room type" },
         { status: 409 }
