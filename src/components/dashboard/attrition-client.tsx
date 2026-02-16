@@ -60,10 +60,11 @@ export default function AttritionClient({
   };
 
   const getUrgency = (daysLeft: number) => {
-    if (daysLeft <= 2) return { color: "bg-red-500", text: "text-red-700", bg: "bg-red-50", label: "CRITICAL" };
-    if (daysLeft <= 7) return { color: "bg-amber-500", text: "text-amber-700", bg: "bg-amber-50", label: "URGENT" };
-    if (daysLeft <= 14) return { color: "bg-yellow-500", text: "text-yellow-700", bg: "bg-yellow-50", label: "WARNING" };
-    return { color: "bg-green-500", text: "text-green-700", bg: "bg-green-50", label: "ON TRACK" };
+    if (daysLeft <= 0) return { color: "bg-red-500", text: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/20", label: "OVERDUE" };
+    if (daysLeft <= 2) return { color: "bg-red-500", text: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/20", label: "CRITICAL" };
+    if (daysLeft <= 7) return { color: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/20", label: "URGENT" };
+    if (daysLeft <= 14) return { color: "bg-yellow-500", text: "text-yellow-700 dark:text-yellow-400", bg: "bg-yellow-50 dark:bg-yellow-950/20", label: "WARNING" };
+    return { color: "bg-green-500", text: "text-green-700 dark:text-green-400", bg: "bg-green-50 dark:bg-green-950/20", label: "ON TRACK" };
   };
 
   const handleNudge = async (ruleId: string) => {
@@ -125,7 +126,7 @@ export default function AttritionClient({
 
       {/* Auto-Trigger Banner */}
       {rules.some((r) => !r.isTriggered && getDaysUntil(r.releaseDate) <= 3) && (
-        <div className="mb-6 p-4 bg-gradient-to-r from-red-50 to-amber-50 dark:from-red-950/20 dark:to-amber-950/20 border border-red-200 dark:border-red-900/50 rounded-xl flex items-center justify-between">
+        <div className="mb-6 p-4 bg-gradient-to-r from-red-50 to-amber-50 dark:from-red-950/20 dark:to-amber-950/20 border border-red-200 dark:border-red-900/50 rounded-xl flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <Zap className="w-5 h-5 text-red-500" />
             <div>
@@ -238,7 +239,7 @@ export default function AttritionClient({
 
                     {/* Content */}
                     <div className={`flex-1 p-4 rounded-xl border transition-all ${rule.isTriggered ? "bg-gray-50/50 dark:bg-zinc-800/30 border-gray-200 dark:border-zinc-700 opacity-60" : `${urgency.bg} border-gray-200/80 dark:border-zinc-700/80 shadow-sm`}`}>
-                      <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-start justify-between mb-3 flex-wrap gap-2">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <h3 className="font-semibold text-gray-900 dark:text-zinc-100">
@@ -255,9 +256,9 @@ export default function AttritionClient({
                               month: "long",
                               day: "numeric",
                             })}
-                            {!rule.isTriggered && daysLeft > 0 && (
+                            {!rule.isTriggered && (
                               <span className={`ml-2 font-semibold ${urgency.text}`}>
-                                ({daysLeft} days left)
+                                {daysLeft > 0 ? `(${daysLeft} days left)` : daysLeft === 0 ? "(Today!)" : `(${Math.abs(daysLeft)} days overdue)`}
                               </span>
                             )}
                           </p>
@@ -306,7 +307,7 @@ export default function AttritionClient({
                       </div>
 
                       {!rule.isTriggered && (
-                        <div className="grid grid-cols-3 gap-4 mt-3 pt-3 border-t border-gray-200/50 dark:border-zinc-700/50">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-3 pt-3 border-t border-gray-200/50 dark:border-zinc-700/50">
                           <div className="bg-white/50 dark:bg-zinc-800/50 rounded-lg p-2">
                             <p className="text-xs text-gray-500 dark:text-zinc-400">Rooms at Risk</p>
                             <p className="text-lg font-bold text-amber-600">{roomsAtRisk}</p>

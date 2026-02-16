@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   BarChart,
@@ -50,7 +51,19 @@ export function AnalyticsCharts({
   bookings,
   eventColor = "#ff6b35",
 }: AnalyticsChartsProps) {
-  const isDark = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
+  // Reactive dark mode detection
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    setIsDark(html.classList.contains('dark'));
+
+    const observer = new MutationObserver(() => {
+      setIsDark(html.classList.contains('dark'));
+    });
+    observer.observe(html, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
   // Room occupancy data
   const roomData = roomBlocks.map((room) => ({
     name: room.roomType.length > 10 ? room.roomType.slice(0, 10) + "..." : room.roomType,
@@ -130,11 +143,11 @@ export function AnalyticsCharts({
                 <YAxis tick={{ fontSize: 11, fill: isDark ? "#a1a1aa" : "#6b7280" }} />
                 <Tooltip contentStyle={{ backgroundColor: isDark ? '#18181b' : '#fff', borderColor: isDark ? '#3f3f46' : '#e5e7eb', color: isDark ? '#fafafa' : undefined, borderRadius: '8px', fontSize: '12px' }} />
                 <Bar dataKey="booked" stackId="a" fill={eventColor} name="Booked" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="available" stackId="a" fill="#e5e7eb" name="Available" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="available" stackId="a" fill={isDark ? "#3f3f46" : "#e5e7eb"} name="Available" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[250px] flex items-center justify-center text-gray-400">
+            <div className="h-[250px] flex items-center justify-center text-gray-400 dark:text-zinc-500">
               No room data available
             </div>
           )}
@@ -169,7 +182,7 @@ export function AnalyticsCharts({
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[250px] flex items-center justify-center text-gray-400">
+            <div className="h-[250px] flex items-center justify-center text-gray-400 dark:text-zinc-500">
               No guest data available
             </div>
           )}
@@ -212,7 +225,7 @@ export function AnalyticsCharts({
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[250px] flex items-center justify-center text-gray-400">
+            <div className="h-[250px] flex items-center justify-center text-gray-400 dark:text-zinc-500">
               No booking data yet
             </div>
           )}
@@ -234,11 +247,11 @@ export function AnalyticsCharts({
                 <Tooltip contentStyle={{ backgroundColor: isDark ? '#18181b' : '#fff', borderColor: isDark ? '#3f3f46' : '#e5e7eb', color: isDark ? '#fafafa' : undefined, borderRadius: '8px', fontSize: '12px' }} />
                 <Legend />
                 <Bar dataKey="revenue" fill={eventColor} name="Earned" radius={[0, 4, 4, 0]} barSize={20} />
-                <Bar dataKey="potential" fill="#e5e7eb" name="Potential" radius={[0, 4, 4, 0]} barSize={20} />
+                <Bar dataKey="potential" fill={isDark ? "#3f3f46" : "#e5e7eb"} name="Potential" radius={[0, 4, 4, 0]} barSize={20} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[250px] flex items-center justify-center text-gray-400">
+            <div className="h-[250px] flex items-center justify-center text-gray-400 dark:text-zinc-500">
               No revenue data available
             </div>
           )}

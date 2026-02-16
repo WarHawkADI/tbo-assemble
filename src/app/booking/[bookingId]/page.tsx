@@ -65,6 +65,10 @@ export default function BookingSelfServicePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const [toastMsg, setToastMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [upgradeRooms, setUpgradeRooms] = useState<{ id: string; roomType: string; rate: number; available: number }[]>([]);
+  const [upgrading, setUpgrading] = useState(false);
 
   useEffect(() => {
     fetch(`/api/bookings/${params.bookingId}`)
@@ -88,11 +92,74 @@ export default function BookingSelfServicePage() {
       });
       if (res.ok) {
         setBooking((prev) => (prev ? { ...prev, status: "cancelled" } : null));
+        setToastMsg({ text: "Booking cancelled successfully", type: "success" });
+      } else {
+        const data = await res.json().catch(() => null);
+        setToastMsg({ text: data?.error || "Failed to cancel booking", type: "error" });
       }
     } catch {
-      alert("Failed to cancel booking");
+      setToastMsg({ text: "Failed to cancel booking. Please try again.", type: "error" });
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const fetchUpgradeOptions = async () => {
+    try {
+      const res = await fetch(`/api/events/${booking?.event?.slug ? '' : ''}bookings/${params.bookingId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      // Fetch event rooms
+      const eventSlug = data.event?.slug;
+      if (!eventSlug) return;
+      const eventRes = await fetch(`/api/events/search?q=${encodeURIComponent(data.event.name)}`);
+      if (!eventRes.ok) return;
+      const events = await eventRes.json();
+      const event = events.find((e: { name: string }) => e.name === data.event.name);
+      if (!event) return;
+      // Get room blocks from event detail
+      const detailRes = await fetch(`/api/events/${event.id}`);
+      if (!detailRes.ok) return;
+      const detail = await detailRes.json();
+      const rooms = (detail.roomBlocks || [])
+        .filter((r: { id: string; totalQty: number; bookedQty: number }) => r.id !== data.roomBlock?.id && r.totalQty - r.bookedQty > 0)
+        .map((r: { id: string; roomType: string; rate: number; totalQty: number; bookedQty: number }) => ({
+          id: r.id,
+          roomType: r.roomType,
+          rate: r.rate,
+          available: r.totalQty - r.bookedQty,
+        }));
+      setUpgradeRooms(rooms);
+      setShowUpgrade(true);
+    } catch {
+      setToastMsg({ text: "Could not load upgrade options", type: "error" });
+    }
+  };
+
+  const handleUpgrade = async (newRoomId: string) => {
+    setUpgrading(true);
+    try {
+      const res = await fetch(`/api/bookings/${params.bookingId}/upgrade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newRoomBlockId: newRoomId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBooking((prev) => prev ? { ...prev, roomBlock: data.booking.roomBlock } : null);
+        setToastMsg({ text: "Room upgraded successfully!", type: "success" });
+        setShowUpgrade(false);
+        // Refresh booking data
+        const refreshRes = await fetch(`/api/bookings/${params.bookingId}`);
+        if (refreshRes.ok) setBooking(await refreshRes.json());
+      } else {
+        const err = await res.json().catch(() => null);
+        setToastMsg({ text: err?.error || "Upgrade failed", type: "error" });
+      }
+    } catch {
+      setToastMsg({ text: "Upgrade failed. Please try again.", type: "error" });
+    } finally {
+      setUpgrading(false);
     }
   };
 
@@ -164,7 +231,9 @@ export default function BookingSelfServicePage() {
           </Link>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-0.5">
-              <img src="/logo.png" alt="TBO Assemble" className="h-6 w-6" />
+              <div className="h-6 w-6 rounded-md flex items-center justify-center bg-gradient-to-br from-[#ff6b35] to-[#e55a2b] shadow-sm">
+                <span className="text-[8px] font-bold text-white leading-none">TBO</span>
+              </div>
               <span className="text-xs font-medium text-gray-400 dark:text-zinc-500">TBO Assemble</span>
             </div>
             <h1 className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">
@@ -326,7 +395,7 @@ export default function BookingSelfServicePage() {
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2 sm:gap-3">
           <Link
             href={`/booking/${booking.id}/invoice`}
             className="flex-1 flex items-center justify-center gap-2 py-3 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl transition-colors text-sm"
@@ -354,8 +423,10 @@ export default function BookingSelfServicePage() {
           </a>
           <button
             onClick={() => {
-              navigator.clipboard.writeText(window.location.href);
-              alert("Booking link copied!");
+              navigator.clipboard.writeText(window.location.href).then(
+                () => setToastMsg({ text: "Booking link copied!", type: "success" }),
+                () => setToastMsg({ text: "Failed to copy link", type: "error" })
+              );
             }}
             className="flex items-center justify-center gap-2 py-3 px-4 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl transition-colors text-sm"
             aria-label="Share booking link"
@@ -370,21 +441,106 @@ export default function BookingSelfServicePage() {
               Already checked in — cannot cancel
             </div>
           ) : (
-            <button
-              onClick={handleCancel}
-              disabled={cancelling}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 font-medium rounded-xl transition-colors text-sm"
-            >
-              {cancelling ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <XCircle className="w-4 h-4" />
-              )}
-              Cancel Booking
-            </button>
+            <div className="space-y-2">
+              {/* Upgrade Room Button */}
+              <button
+                onClick={fetchUpgradeOptions}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium rounded-xl transition-colors text-sm"
+              >
+                <Bed className="w-4 h-4" />
+                Upgrade Room
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={cancelling}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 font-medium rounded-xl transition-colors text-sm"
+              >
+                {cancelling ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <XCircle className="w-4 h-4" />
+                )}
+                Cancel Booking
+              </button>
+            </div>
           )
         )}
+
+        {/* Upgrade Room Modal */}
+        {showUpgrade && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold text-lg text-zinc-800 dark:text-zinc-200">Upgrade Your Room</h2>
+                <button onClick={() => setShowUpgrade(false)} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-sm">
+                  ✕
+                </button>
+              </div>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+                Current room: <span className="font-semibold text-zinc-700 dark:text-zinc-300">{booking.roomBlock.roomType}</span> (₹{booking.roomBlock.rate.toLocaleString("en-IN")}/night)
+              </p>
+              {upgradeRooms.length === 0 ? (
+                <div className="text-center py-8 text-zinc-400 dark:text-zinc-500">
+                  <Bed className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No other rooms available for upgrade</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {upgradeRooms.map((room) => {
+                    const diff = room.rate - booking.roomBlock.rate;
+                    const isDowngrade = diff < 0;
+                    return (
+                      <button
+                        key={room.id}
+                        onClick={() => handleUpgrade(room.id)}
+                        disabled={upgrading}
+                        className="w-full p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-all text-left"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-semibold text-sm text-zinc-800 dark:text-zinc-200">{room.roomType}</h3>
+                            <p className="text-xs text-zinc-400 dark:text-zinc-500">{room.available} available</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-sm text-zinc-800 dark:text-zinc-200">₹{room.rate.toLocaleString("en-IN")}<span className="text-xs font-normal text-zinc-400">/night</span></p>
+                            <p className={`text-xs font-semibold ${isDowngrade ? 'text-emerald-600' : 'text-amber-600'}`}>
+                              {isDowngrade ? '↓' : '↑'} {isDowngrade ? 'Save' : '+'} ₹{Math.abs(diff).toLocaleString("en-IN")}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {upgrading && (
+                <div className="mt-4 flex items-center justify-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Upgrading...
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Toast notification */}
+      {toastMsg && (
+        <div
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 ${
+            toastMsg.type === "success"
+              ? "bg-green-600 text-white"
+              : "bg-red-600 text-white"
+          }`}
+          onAnimationEnd={() => setTimeout(() => setToastMsg(null), 2500)}
+        >
+          {toastMsg.type === "success" ? (
+            <CheckCircle className="w-4 h-4" />
+          ) : (
+            <XCircle className="w-4 h-4" />
+          )}
+          {toastMsg.text}
+        </div>
+      )}
     </div>
   );
 }

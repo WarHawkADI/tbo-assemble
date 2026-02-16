@@ -81,6 +81,8 @@ export default function BookingClient({ event }: { event: EventData }) {
   const [discountInfo, setDiscountInfo] = useState<{ percent: number; originalAmount: number; finalAmount: number } | null>(null);
   const [processingPhase, setProcessingPhase] = useState("");
   const confetti = useConfetti();
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [qrLoaded, setQrLoaded] = useState(false);
 
   // Dynamic group options based on event type
   const groupOptions = (() => {
@@ -97,6 +99,15 @@ export default function BookingClient({ event }: { event: EventData }) {
   })();
 
   const handleSubmit = async () => {
+    // Inline validation
+    const errors: Record<string, string> = {};
+    if (!guestName.trim()) errors.name = "Name is required";
+    if (guestEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)) errors.email = "Invalid email format";
+    if (guestPhone && !/^(\+91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}$/.test(guestPhone.replace(/\s/g, ''))) errors.phone = "Enter valid Indian phone (+91 XXXXX XXXXX)";
+    if (!selectedRoom) errors.room = "Please select a room";
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     if (!guestName || !selectedRoom) return;
     setIsSubmitting(true);
     setBookingError("");
@@ -155,7 +166,9 @@ export default function BookingClient({ event }: { event: EventData }) {
 
   if (isBooked) {
     return (
-      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-4 lg:p-6">
+      <div className="min-h-screen bg-[#fafafa] dark:bg-zinc-950 flex items-center justify-center p-4 lg:p-6">
+        {/* Confetti on success */}
+        <ConfettiExplosion active={confetti.active} onComplete={confetti.reset} />
         {/* Background Effects */}
         <div 
           className="fixed inset-0 pointer-events-none"
@@ -174,7 +187,7 @@ export default function BookingClient({ event }: { event: EventData }) {
             style={{ background: `linear-gradient(135deg, ${event.primaryColor}, ${event.accentColor})` }}
           />
           
-          <div className="relative bg-white rounded-xl lg:rounded-3xl shadow-xl lg:shadow-2xl p-6 sm:p-8 lg:p-10">
+          <div className="relative bg-white dark:bg-zinc-900 rounded-xl lg:rounded-3xl shadow-xl lg:shadow-2xl p-6 sm:p-8 lg:p-10">
             {/* Success Icon */}
             <div className="relative mb-6 lg:mb-8">
               <div 
@@ -190,23 +203,23 @@ export default function BookingClient({ event }: { event: EventData }) {
             </div>
             
             <div className="text-center mb-6 lg:mb-8">
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 mb-1.5 lg:mb-2">You're All Set!</h1>
-              <p className="text-gray-500 text-sm lg:text-base">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-zinc-100 mb-1.5 lg:mb-2">You're All Set!</h1>
+              <p className="text-gray-500 dark:text-zinc-400 text-sm lg:text-base">
                 Thank you, <span className="font-semibold" style={{ color: event.primaryColor }}>{guestName}</span>
               </p>
-              <p className="text-xs lg:text-sm text-gray-400 mt-1">Your room at {event.venue} has been reserved</p>
+              <p className="text-xs lg:text-sm text-gray-400 dark:text-zinc-500 mt-1">Your room at {event.venue} has been reserved</p>
             </div>
             
             {/* Discount Savings Banner */}
             {discountInfo && (
-              <div className="mb-5 lg:mb-6 rounded-xl lg:rounded-2xl p-3 lg:p-4 bg-emerald-50 border border-emerald-200">
+              <div className="mb-5 lg:mb-6 rounded-xl lg:rounded-2xl p-3 lg:p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
                 <div className="flex items-center gap-2 mb-1">
                   <BadgePercent className="h-4 w-4 text-emerald-600" />
-                  <span className="text-sm font-semibold text-emerald-700">
+                  <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
                     Group Discount Applied!
                   </span>
                 </div>
-                <p className="text-xs text-emerald-600">
+                <p className="text-xs text-emerald-600 dark:text-emerald-400">
                   {discountInfo.percent}% group discount saved you{" "}
                   <span className="font-bold">₹{(discountInfo.originalAmount - discountInfo.finalAmount).toLocaleString("en-IN")}</span>
                 </p>
@@ -219,17 +232,17 @@ export default function BookingClient({ event }: { event: EventData }) {
               style={{ backgroundColor: `${event.secondaryColor}50` }}
             >
               <div className="flex justify-between items-center text-xs lg:text-sm">
-                <span className="text-gray-500">Room</span>
-                <span className="font-semibold text-gray-900">{selectedRoomData?.roomType}</span>
+                <span className="text-gray-500 dark:text-zinc-400">Room</span>
+                <span className="font-semibold text-gray-900 dark:text-zinc-100">{selectedRoomData?.roomType}</span>
               </div>
               <div className="flex justify-between items-center text-xs lg:text-sm">
-                <span className="text-gray-500">{nights} Night{nights > 1 ? 's' : ''}</span>
-                <span className="font-semibold text-gray-900">₹{roomTotal.toLocaleString("en-IN")}</span>
+                <span className="text-gray-500 dark:text-zinc-400">{nights} Night{nights > 1 ? 's' : ''}</span>
+                <span className="font-semibold text-gray-900 dark:text-zinc-100">₹{roomTotal.toLocaleString("en-IN")}</span>
               </div>
               {addOnTotal > 0 && (
                 <div className="flex justify-between items-center text-xs lg:text-sm">
-                  <span className="text-gray-500">Add-Ons</span>
-                  <span className="font-semibold text-gray-900">₹{addOnTotal.toLocaleString("en-IN")}</span>
+                  <span className="text-gray-500 dark:text-zinc-400">Add-Ons</span>
+                  <span className="font-semibold text-gray-900 dark:text-zinc-100">₹{addOnTotal.toLocaleString("en-IN")}</span>
                 </div>
               )}
               {discountInfo && (
@@ -242,8 +255,8 @@ export default function BookingClient({ event }: { event: EventData }) {
                   </span>
                 </div>
               )}
-              <div className="flex justify-between items-center pt-2.5 lg:pt-3 border-t border-gray-200">
-                <span className="font-semibold text-gray-900 text-sm lg:text-base">Total</span>
+              <div className="flex justify-between items-center pt-2.5 lg:pt-3 border-t border-gray-200 dark:border-zinc-700">
+                <span className="font-semibold text-gray-900 dark:text-zinc-100 text-sm lg:text-base">Total</span>
                 <span className="text-lg lg:text-xl font-bold" style={{ color: event.primaryColor }}>
                   ₹{(discountInfo ? discountInfo.finalAmount : grandTotal).toLocaleString("en-IN")}
                 </span>
@@ -251,28 +264,34 @@ export default function BookingClient({ event }: { event: EventData }) {
             </div>
             
             {/* Trust Badge */}
-            <div className="flex items-center justify-center gap-1.5 lg:gap-2 text-[10px] lg:text-xs text-gray-400 mb-4 lg:mb-5">
+            <div className="flex items-center justify-center gap-1.5 lg:gap-2 text-[10px] lg:text-xs text-gray-400 dark:text-zinc-500 mb-4 lg:mb-5">
               <Shield className="h-3 w-3 lg:h-3.5 lg:w-3.5" />
-              <span>Powered by <span className="font-semibold text-gray-500">TBO Assemble</span></span>
+              <span>Powered by <span className="font-semibold text-gray-500 dark:text-zinc-400">TBO Assemble</span></span>
             </div>
 
             {/* QR Code & Self-Service */}
             {bookingId && (
               <div className="space-y-4">
                 <div className="text-center">
-                  <div className="flex items-center justify-center gap-1.5 text-xs text-gray-500 mb-3">
+                  <div className="flex items-center justify-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400 mb-3">
                     <QrCode className="h-3.5 w-3.5" />
                     <span>Your Check-In QR Code</span>
                   </div>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {!qrLoaded && (
+                    <div className="mx-auto w-[150px] h-[150px] rounded-lg bg-gray-100 dark:bg-zinc-800 animate-pulse flex items-center justify-center">
+                      <QrCode className="h-8 w-8 text-gray-300 dark:text-zinc-600" />
+                    </div>
+                  )}
                   <img
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(bookingId)}`}
                     alt="Check-in QR Code"
                     width={150}
                     height={150}
-                    className="mx-auto rounded-lg"
+                    className={`mx-auto rounded-lg ${qrLoaded ? '' : 'hidden'}`}
+                    onLoad={() => setQrLoaded(true)}
                   />
-                  <p className="text-[10px] text-gray-400 mt-2 font-mono">{bookingId.slice(0, 8)}...</p>
+                  <p className="text-[10px] text-gray-400 dark:text-zinc-500 mt-2 font-mono">{bookingId.slice(0, 8)}...</p>
                 </div>
 
                 <div className="flex gap-2">
@@ -285,23 +304,23 @@ export default function BookingClient({ event }: { event: EventData }) {
                   </a>
                   <a
                     href={`/booking/${bookingId}/invoice`}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-xl hover:bg-gray-200 transition-colors"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-300 text-xs font-medium rounded-xl hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors"
                   >
                     <FileText className="h-3.5 w-3.5" /> View Invoice
                   </a>
                 </div>
 
                 {/* Email Preview */}
-                <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/50">
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-2">
+                <div className="border border-gray-200 dark:border-zinc-700 rounded-xl p-4 bg-gray-50/50 dark:bg-zinc-800/50">
+                  <p className="text-[10px] text-gray-400 dark:text-zinc-500 uppercase tracking-wider font-semibold mb-2">
                     Confirmation Email Preview
                   </p>
-                  <div className="bg-white rounded-lg p-4 border border-gray-100">
-                    <p className="text-xs text-gray-500 mb-1">To: {guestEmail || "your@email.com"}</p>
-                    <p className="text-xs font-semibold text-gray-800 mb-2">
+                  <div className="bg-white dark:bg-zinc-900 rounded-lg p-4 border border-gray-100 dark:border-zinc-700">
+                    <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">To: {guestEmail || "your@email.com"}</p>
+                    <p className="text-xs font-semibold text-gray-800 dark:text-zinc-200 mb-2">
                       Booking Confirmed — {event.name}
                     </p>
-                    <p className="text-[11px] text-gray-600 leading-relaxed">
+                    <p className="text-[11px] text-gray-600 dark:text-zinc-400 leading-relaxed">
                       Dear {guestName},<br/><br/>
                       Your room ({selectedRoomData?.roomType}) at {event.venue} has been confirmed for{" "}
                       {new Date(event.checkIn).toLocaleDateString("en-IN")} –{" "}
@@ -404,56 +423,59 @@ export default function BookingClient({ event }: { event: EventData }) {
               <User className="h-4 w-4 lg:h-4.5 lg:w-4.5 text-white" />
             </div>
             <div>
-              <h2 className="font-semibold text-gray-900 text-sm lg:text-base">Guest Details</h2>
-              <p className="text-[10px] lg:text-xs text-gray-500">Tell us who's attending</p>
+              <h2 className="font-semibold text-gray-900 dark:text-zinc-100 text-sm lg:text-base">Guest Details</h2>
+              <p className="text-[10px] lg:text-xs text-gray-500 dark:text-zinc-400">Tell us who's attending</p>
             </div>
           </div>
           <div className="p-4 lg:p-6 space-y-4 lg:space-y-5">
             <div>
-              <label className="text-xs lg:text-sm font-semibold text-gray-700 mb-1.5 lg:mb-2 block">
+              <label className="text-xs lg:text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-1.5 lg:mb-2 block">
                 Full Name <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={guestName}
                 onChange={(e) => setGuestName(e.target.value)}
-                className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 transition-all bg-gray-50/50 focus:bg-white"
+                className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 dark:border-zinc-700 text-sm text-gray-900 dark:text-zinc-100 focus:outline-none focus:ring-2 transition-all bg-gray-50/50 dark:bg-zinc-800 focus:bg-white dark:focus:bg-zinc-700"
                 style={{ "--tw-ring-color": event.primaryColor } as React.CSSProperties}
                 placeholder="Enter your full name"
               />
+              {fieldErrors.name && <p className="text-xs text-red-500 mt-1">{fieldErrors.name}</p>}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
               <div>
-                <label className="text-xs lg:text-sm font-semibold text-gray-700 mb-1.5 lg:mb-2 block">Email</label>
+                <label className="text-xs lg:text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-1.5 lg:mb-2 block">Email</label>
                 <input
                   type="email"
                   value={guestEmail}
                   onChange={(e) => setGuestEmail(e.target.value)}
-                  className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 transition-all bg-gray-50/50 focus:bg-white"
+                  className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 dark:border-zinc-700 text-sm text-gray-900 dark:text-zinc-100 focus:outline-none focus:ring-2 transition-all bg-gray-50/50 dark:bg-zinc-800 focus:bg-white dark:focus:bg-zinc-700"
                   style={{ "--tw-ring-color": event.primaryColor } as React.CSSProperties}
                   placeholder="you@email.com"
                 />
+                {fieldErrors.email && <p className="text-xs text-red-500 mt-1">{fieldErrors.email}</p>}
               </div>
               <div>
-                <label className="text-xs lg:text-sm font-semibold text-gray-700 mb-1.5 lg:mb-2 block">Phone</label>
+                <label className="text-xs lg:text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-1.5 lg:mb-2 block">Phone</label>
                 <input
                   type="tel"
                   value={guestPhone}
                   onChange={(e) => setGuestPhone(e.target.value)}
-                  className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 transition-all bg-gray-50/50 focus:bg-white"
+                  className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 dark:border-zinc-700 text-sm text-gray-900 dark:text-zinc-100 focus:outline-none focus:ring-2 transition-all bg-gray-50/50 dark:bg-zinc-800 focus:bg-white dark:focus:bg-zinc-700"
                   style={{ "--tw-ring-color": event.primaryColor } as React.CSSProperties}
                   placeholder="+91 XXXXX XXXXX"
                 />
+                {fieldErrors.phone && <p className="text-xs text-red-500 mt-1">{fieldErrors.phone}</p>}
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
               <div>
-                <label className="text-xs lg:text-sm font-semibold text-gray-700 mb-1.5 lg:mb-2 block">Group / Side</label>
+                <label className="text-xs lg:text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-1.5 lg:mb-2 block">Group / Side</label>
                 <select
                   value={guestGroup}
                   onChange={(e) => setGuestGroup(e.target.value)}
                   title="Select your group"
-                  className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 transition-all bg-gray-50/50 focus:bg-white"
+                  className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 dark:border-zinc-700 text-sm text-gray-900 dark:text-zinc-100 focus:outline-none focus:ring-2 transition-all bg-gray-50/50 dark:bg-zinc-800 focus:bg-white dark:focus:bg-zinc-700"
                   style={{ "--tw-ring-color": event.primaryColor } as React.CSSProperties}
                 >
                   <option value="">Select group</option>
@@ -463,23 +485,23 @@ export default function BookingClient({ event }: { event: EventData }) {
                 </select>
               </div>
               <div>
-                <label className="text-xs lg:text-sm font-semibold text-gray-700 mb-1.5 lg:mb-2 block">Stay Near (Proximity)</label>
+                <label className="text-xs lg:text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-1.5 lg:mb-2 block">Stay Near (Proximity)</label>
                 <input
                   type="text"
                   value={proximityRequest}
                   onChange={(e) => setProximityRequest(e.target.value)}
-                  className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 transition-all bg-gray-50/50 focus:bg-white"
+                  className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 dark:border-zinc-700 text-sm text-gray-900 dark:text-zinc-100 focus:outline-none focus:ring-2 transition-all bg-gray-50/50 dark:bg-zinc-800 focus:bg-white dark:focus:bg-zinc-700"
                   style={{ "--tw-ring-color": event.primaryColor } as React.CSSProperties}
                   placeholder="e.g. Near Priya Sharma"
                 />
               </div>
             </div>
             <div>
-              <label className="text-xs lg:text-sm font-semibold text-gray-700 mb-1.5 lg:mb-2 block">Special Requests</label>
+              <label className="text-xs lg:text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-1.5 lg:mb-2 block">Special Requests</label>
               <textarea
                 value={specialRequests}
                 onChange={(e) => setSpecialRequests(e.target.value)}
-                className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 transition-all bg-gray-50/50 focus:bg-white resize-none"
+                className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 dark:border-zinc-700 text-sm text-gray-900 dark:text-zinc-100 focus:outline-none focus:ring-2 transition-all bg-gray-50/50 dark:bg-zinc-800 focus:bg-white dark:focus:bg-zinc-700 resize-none"
                 style={{ "--tw-ring-color": event.primaryColor } as React.CSSProperties}
                 placeholder="e.g. Early check-in, extra pillows, vegetarian meals..."
                 rows={2}
@@ -498,8 +520,8 @@ export default function BookingClient({ event }: { event: EventData }) {
               <Hotel className="h-4 w-4 lg:h-4.5 lg:w-4.5 text-white" />
             </div>
             <div>
-              <h2 className="font-semibold text-gray-900 text-sm lg:text-base">Select Your Room</h2>
-              <p className="text-[10px] lg:text-xs text-gray-500">Choose your accommodation</p>
+              <h2 className="font-semibold text-gray-900 dark:text-zinc-100 text-sm lg:text-base">Select Your Room</h2>
+              <p className="text-[10px] lg:text-xs text-gray-500 dark:text-zinc-400">Choose your accommodation</p>
             </div>
           </div>
           <div className="p-3 lg:p-4 grid grid-cols-1 lg:grid-cols-2 gap-2.5 lg:gap-3">
@@ -528,7 +550,7 @@ export default function BookingClient({ event }: { event: EventData }) {
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 lg:gap-2 mb-0.5 lg:mb-1">
-                        <h3 className="font-semibold text-gray-900 text-sm lg:text-base">{room.roomType}</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-zinc-100 text-sm lg:text-base">{room.roomType}</h3>
                         {isLimited && (
                           <span className="px-1.5 lg:px-2 py-0.5 rounded-full text-[10px] lg:text-xs font-semibold bg-amber-100 text-amber-700 flex items-center gap-0.5 lg:gap-1">
                             <Clock className="h-2.5 w-2.5 lg:h-3 lg:w-3" /> {available} left
@@ -578,8 +600,8 @@ export default function BookingClient({ event }: { event: EventData }) {
                 <Sparkles className="h-4 w-4 lg:h-4.5 lg:w-4.5 text-white" />
               </div>
               <div>
-                <h2 className="font-semibold text-gray-900 text-sm lg:text-base">Add-Ons & Experiences</h2>
-                <p className="text-[10px] lg:text-xs text-gray-500">Enhance your stay</p>
+              <h2 className="font-semibold text-gray-900 dark:text-zinc-100 text-sm lg:text-base">Add-Ons & Experiences</h2>
+              <p className="text-[10px] lg:text-xs text-gray-500 dark:text-zinc-400">Enhance your stay</p>
               </div>
             </div>
             <div className="p-3 lg:p-4 grid grid-cols-1 lg:grid-cols-2 gap-2">
@@ -610,7 +632,7 @@ export default function BookingClient({ event }: { event: EventData }) {
                         {isSelected && <Check className="h-3 w-3 lg:h-3.5 lg:w-3.5" />}
                       </div>
                       <div className="min-w-0">
-                        <span className="font-medium text-xs lg:text-sm text-gray-900 block">{addon.name}</span>
+                        <span className="font-medium text-xs lg:text-sm text-gray-900 dark:text-zinc-100 block">{addon.name}</span>
                         {addon.description && (
                           <span className="text-[10px] lg:text-xs text-gray-500 mt-0.5 block truncate">{addon.description}</span>
                         )}
@@ -640,15 +662,15 @@ export default function BookingClient({ event }: { event: EventData }) {
               <CreditCard className="h-4 w-4 lg:h-4.5 lg:w-4.5 text-white" />
             </div>
             <div>
-              <h2 className="font-semibold text-gray-900 text-sm lg:text-base">Booking Summary</h2>
-              <p className="text-[10px] lg:text-xs text-gray-500">Review your booking details</p>
+              <h2 className="font-semibold text-gray-900 dark:text-zinc-100 text-sm lg:text-base">Booking Summary</h2>
+              <p className="text-[10px] lg:text-xs text-gray-500 dark:text-zinc-400">Review your booking details</p>
             </div>
           </div>
           <div className="p-4 lg:p-6 space-y-2 lg:space-y-3 text-sm">
             {selectedRoomData && (
               <div className="flex justify-between items-center py-1.5 lg:py-2">
-                <span className="text-gray-500 text-xs lg:text-sm">{selectedRoomData.roomType} × {nights} night{nights > 1 ? 's' : ''}</span>
-                <span className="font-semibold text-gray-900 text-xs lg:text-sm">₹{roomTotal.toLocaleString("en-IN")}</span>
+                <span className="text-gray-500 dark:text-zinc-400 text-xs lg:text-sm">{selectedRoomData.roomType} × {nights} night{nights > 1 ? 's' : ''}</span>
+                <span className="font-semibold text-gray-900 dark:text-zinc-100 text-xs lg:text-sm">₹{roomTotal.toLocaleString("en-IN")}</span>
               </div>
             )}
             {selectedAddOns.map((id) => {
@@ -656,8 +678,8 @@ export default function BookingClient({ event }: { event: EventData }) {
               if (!addon || addon.isIncluded) return null;
               return (
                 <div key={id} className="flex justify-between items-center py-1.5 lg:py-2">
-                  <span className="text-gray-500 text-xs lg:text-sm">{addon.name}</span>
-                  <span className="font-semibold text-gray-900 text-xs lg:text-sm">₹{addon.price.toLocaleString("en-IN")}</span>
+                  <span className="text-gray-500 dark:text-zinc-400 text-xs lg:text-sm">{addon.name}</span>
+                  <span className="font-semibold text-gray-900 dark:text-zinc-100 text-xs lg:text-sm">₹{addon.price.toLocaleString("en-IN")}</span>
                 </div>
               );
             })}
@@ -675,7 +697,7 @@ export default function BookingClient({ event }: { event: EventData }) {
               className="flex justify-between items-center pt-3 lg:pt-4 mt-3 lg:mt-4 rounded-lg lg:rounded-xl p-3 lg:p-4 -mx-1 lg:-mx-2"
               style={{ backgroundColor: `${event.secondaryColor}50` }}
             >
-              <span className="font-semibold text-gray-900 text-sm lg:text-base">Total Amount</span>
+              <span className="font-semibold text-gray-900 dark:text-zinc-100 text-sm lg:text-base">Total Amount</span>
               <span className="text-xl lg:text-2xl font-bold" style={{ color: event.primaryColor }}>
                 ₹{grandTotal.toLocaleString("en-IN")}
               </span>
@@ -701,12 +723,12 @@ export default function BookingClient({ event }: { event: EventData }) {
 
         {/* Submit Button */}
         <div className="sticky bottom-4 z-10 max-w-lg mx-auto w-full">
-          <div className="rounded-2xl border border-white/20 bg-white/80 backdrop-blur-xl p-3 shadow-2xl">
+          <div className="rounded-2xl border border-white/20 dark:border-zinc-700/50 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl p-3 shadow-2xl">
             {/* Price summary bar */}
             {selectedRoomData ? (
               <div className="flex items-center justify-between mb-3 px-1">
-                <div className="text-xs text-gray-500">
-                  <span className="font-medium text-gray-700">{selectedRoomData.roomType}</span>
+                <div className="text-xs text-gray-500 dark:text-zinc-400">
+                  <span className="font-medium text-gray-700 dark:text-zinc-300">{selectedRoomData.roomType}</span>
                   <span className="mx-1">·</span>
                   <span>{nights} night{nights > 1 ? 's' : ''}</span>
                   {addOnTotal > 0 && <span className="mx-1">+ add-ons</span>}

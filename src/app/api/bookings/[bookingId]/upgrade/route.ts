@@ -78,31 +78,39 @@ export async function POST(
     const addOnTotal = bookingAddOns.reduce((sum, ba) => sum + ba.price, 0);
     const newTotalAmount = newRoomTotal + addOnTotal;
 
-    // Decrement bookedQty on old room block
-    await prisma.roomBlock.update({
-      where: { id: booking.roomBlockId },
-      data: { bookedQty: { decrement: 1 } },
-    });
+    // Wrap upgrade in a transaction for atomicity
+    const updated = await prisma.$transaction(async (tx) => {
+      // Decrement bookedQty on old room block (guard against negative)
+      const oldBlock = await tx.roomBlock.findUnique({ where: { id: booking.roomBlockId } });
+      if (oldBlock && oldBlock.bookedQty > 0) {
+        await tx.roomBlock.update({
+          where: { id: booking.roomBlockId },
+          data: { bookedQty: { decrement: 1 } },
+        });
+      }
 
-    // Increment bookedQty on new room block
-    await prisma.roomBlock.update({
-      where: { id: newRoomBlockId },
-      data: { bookedQty: { increment: 1 } },
-    });
+      // Increment bookedQty on new room block
+      await tx.roomBlock.update({
+        where: { id: newRoomBlockId },
+        data: { bookedQty: { increment: 1 } },
+      });
 
-    const updated = await prisma.booking.update({
-      where: { id: bookingId },
-      data: { roomBlockId: newRoomBlockId, totalAmount: newTotalAmount },
-      include: { guest: true, roomBlock: true },
-    });
+      const updatedBooking = await tx.booking.update({
+        where: { id: bookingId },
+        data: { roomBlockId: newRoomBlockId, totalAmount: newTotalAmount },
+        include: { guest: true, roomBlock: true },
+      });
 
-    await prisma.activityLog.create({
-      data: {
-        eventId: booking.eventId,
-        action: isUpgrade ? "room_upgraded" : "room_downgraded",
-        details: `${booking.guest.name}: ${oldRoomType} → ${newRoomType}${reason ? ` (${reason})` : ""}`,
-        actor: "Agent",
-      },
+      await tx.activityLog.create({
+        data: {
+          eventId: booking.eventId,
+          action: isUpgrade ? "room_upgraded" : "room_downgraded",
+          details: `${booking.guest.name}: ${oldRoomType} → ${newRoomType}${reason ? ` (${reason})` : ""}`,
+          actor: "Agent",
+        },
+      });
+
+      return updatedBooking;
     });
 
     return NextResponse.json({
@@ -114,7 +122,7 @@ export async function POST(
         type: isUpgrade ? "upgrade" : "downgrade",
         rateDifference: newRoomBlock.rate - booking.roomBlock.rate,
         oldAmount: booking.totalAmount,
-        newAmount: newTotalAmount,
+        newAmount: newRoomTotal,
       },
     });
   } catch (error) {

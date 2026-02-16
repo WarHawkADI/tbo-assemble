@@ -354,7 +354,7 @@ export default function OnboardingPage() {
               </div>
             </CardHeader>
             <CardContent className="p-5">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide">Event Name</label>
                   <p className="text-sm font-semibold text-gray-900 dark:text-zinc-100">{parsedData.invite?.eventName}</p>
@@ -415,7 +415,7 @@ export default function OnboardingPage() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-hidden">
+              <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50/50 dark:bg-zinc-800/50">

@@ -209,7 +209,7 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
   return (
     <div>
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <Card className="border-0 shadow-sm">
           <CardContent className="p-4">
             <p className="text-sm text-gray-500 dark:text-zinc-400">Total Guests</p>
@@ -238,7 +238,7 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
 
       {/* Actions Bar */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
-        <div className="flex-1 min-w-[200px] relative">
+        <div className="w-full sm:flex-1 sm:min-w-[200px] relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-zinc-500" />
           <Input
             placeholder="Search guests..."
@@ -435,7 +435,8 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
             </CardHeader>
             <CardContent>
               <div className="border rounded-xl overflow-hidden">
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[600px]">
                   <thead className="bg-gray-50 dark:bg-zinc-800">
                     <tr>
                       <th className="text-left p-3 font-medium text-gray-500 dark:text-zinc-400">Name</th>
@@ -476,6 +477,7 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             </CardContent>
           </Card>

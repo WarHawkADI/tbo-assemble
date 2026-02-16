@@ -94,58 +94,64 @@ export async function PATCH(
 
       // Only decrement if the booking was not already cancelled
       if (booking.status !== "cancelled") {
-        // Protect bookedQty from going negative
-        const currentBlock = await prisma.roomBlock.findUnique({ where: { id: booking.roomBlockId } });
-        if (currentBlock && currentBlock.bookedQty > 0) {
-          await prisma.roomBlock.update({
-            where: { id: booking.roomBlockId },
-            data: { bookedQty: { decrement: 1 } },
-          });
-        }
-      }
+        // Wrap cancellation in transaction for atomicity
+        const updated = await prisma.$transaction(async (tx) => {
+          // Protect bookedQty from going negative
+          const currentBlock = await tx.roomBlock.findUnique({ where: { id: booking.roomBlockId } });
+          if (currentBlock && currentBlock.bookedQty > 0) {
+            await tx.roomBlock.update({
+              where: { id: booking.roomBlockId },
+              data: { bookedQty: { decrement: 1 } },
+            });
+          }
 
-      const updated = await prisma.booking.update({
-        where: { id: bookingId },
-        data: { status: "cancelled" },
-      });
-
-      await prisma.activityLog.create({
-        data: {
-          eventId: booking.eventId,
-          action: "booking_cancelled",
-          details: `Booking ${bookingId} cancelled via self-service`,
-          actor: "Guest",
-        },
-      });
-
-      // Waitlist auto-promotion: notify first person on waitlist for this room block
-      if (booking.status !== "cancelled") {
-        const waitlistEntry = await prisma.waitlist.findFirst({
-          where: {
-            roomBlockId: booking.roomBlockId,
-            status: "waiting",
-          },
-          orderBy: { createdAt: "asc" },
-        });
-
-        if (waitlistEntry) {
-          await prisma.waitlist.update({
-            where: { id: waitlistEntry.id },
-            data: { status: "notified" },
+          const cancelledBooking = await tx.booking.update({
+            where: { id: bookingId },
+            data: { status: "cancelled" },
           });
 
-          await prisma.activityLog.create({
+          await tx.activityLog.create({
             data: {
               eventId: booking.eventId,
-              action: "waitlist_promoted",
-              details: `${waitlistEntry.guestName} promoted from waitlist — room available after cancellation`,
-              actor: "System",
+              action: "booking_cancelled",
+              details: `Booking ${bookingId} cancelled via self-service`,
+              actor: "Guest",
             },
           });
-        }
+
+          // Waitlist auto-promotion: notify first person on waitlist for this room block
+          const waitlistEntry = await tx.waitlist.findFirst({
+            where: {
+              roomBlockId: booking.roomBlockId,
+              status: "waiting",
+            },
+            orderBy: { createdAt: "asc" },
+          });
+
+          if (waitlistEntry) {
+            await tx.waitlist.update({
+              where: { id: waitlistEntry.id },
+              data: { status: "notified" },
+            });
+
+            await tx.activityLog.create({
+              data: {
+                eventId: booking.eventId,
+                action: "waitlist_promoted",
+                details: `${waitlistEntry.guestName} promoted from waitlist — room available after cancellation`,
+                actor: "System",
+              },
+            });
+          }
+
+          return cancelledBooking;
+        });
+
+        return NextResponse.json(updated);
       }
 
-      return NextResponse.json(updated);
+      // Already cancelled — return as-is
+      return NextResponse.json(booking);
     }
 
     return NextResponse.json(booking);

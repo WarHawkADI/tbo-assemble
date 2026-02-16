@@ -134,6 +134,23 @@ const translations: Record<string, Record<Locale, string>> = {
   "room_not_available": { en: "This room is no longer available", hi: "यह कमरा अब उपलब्ध नहीं है" },
   "required_field": { en: "This field is required", hi: "यह फ़ील्ड आवश्यक है" },
   "invalid_email": { en: "Please enter a valid email", hi: "कृपया एक वैध ईमेल दर्ज करें" },
+  // Itinerary
+  "event_schedule": { en: "Event Schedule", hi: "कार्यक्रम अनुसूची" },
+  "what_to_expect": { en: "What to expect during the event", hi: "कार्यक्रम के दौरान क्या उम्मीद करें" },
+  "arrival_day": { en: "Arrival Day", hi: "आगमन का दिन" },
+  "departure_day": { en: "Departure Day", hi: "विदाई का दिन" },
+  // Urgency
+  "rooms_left_fast": { en: "rooms left — filling fast!", hi: "कमरे शेष — तेज़ी से भर रहे हैं!" },
+  "only": { en: "Only", hi: "केवल" },
+  "starting_from": { en: "Starting from", hi: "शुरुआत" },
+  "up_to": { en: "up to", hi: "अधिकतम" },
+  "off": { en: "off", hi: "छूट" },
+  // Upgrade (self-service)
+  "current_room": { en: "Current Room", hi: "वर्तमान कमरा" },
+  "no_upgrades": { en: "No other rooms available", hi: "कोई अन्य कमरा उपलब्ध नहीं" },
+  // Demo
+  "live_demo": { en: "Live Demo Mode", hi: "लाइव डेमो मोड" },
+  "revenue_at_risk": { en: "Revenue At Risk", hi: "जोखिम में राजस्व" },
 };
 
 interface I18nContextType {

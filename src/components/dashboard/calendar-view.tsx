@@ -290,7 +290,7 @@ export function CalendarView({ events, onEventClick }: CalendarViewProps) {
 
       {/* Legend */}
       <div className="flex items-center justify-between mt-4 flex-wrap gap-2">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-x-3 gap-y-1 flex-wrap">
           {Object.entries(STATUS_CONFIG).map(([status, config]) => (
             <div key={status} className="flex items-center gap-1.5">
               <div className={`w-2 h-2 rounded-full ${config.dot}`} />

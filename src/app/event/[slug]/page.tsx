@@ -194,6 +194,19 @@ export default async function MicrositePage({
             <ArrowRight className="h-4 w-4 lg:h-5 lg:w-5 transition-transform group-hover:translate-x-1" />
           </Link>
 
+          {/* Urgency Badge */}
+          {totalRoomsAvailable > 0 && totalRoomsAvailable < 20 && (
+            <div className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 animate-pulse">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+              </span>
+              <span className="text-xs font-semibold text-red-600 dark:text-red-400">
+                Only {totalRoomsAvailable} rooms left — filling fast!
+              </span>
+            </div>
+          )}
+
           {/* Countdown Timer */}
           <div className="mt-8">
             <Countdown targetDate={event.checkIn} label="Event Starts In" />
@@ -256,6 +269,89 @@ export default async function MicrositePage({
           </div>
         </div>
       </section>
+
+      {/* Starting Price Badge */}
+      {lowestRate > 0 && (
+        <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+          <div className="flex items-center justify-center">
+            <div className="inline-flex items-center gap-3 px-5 py-3 rounded-xl bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-700 shadow-sm">
+              <div className="text-left">
+                <p className="text-[10px] font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider">Starting from</p>
+                <p className="text-xl font-bold" style={{ color: event.primaryColor }}>
+                  {formatCurrency(lowestRate)}<span className="text-xs font-medium text-gray-400 dark:text-zinc-500">/night</span>
+                </p>
+              </div>
+              {event.discountRules.length > 0 && (
+                <>
+                  <div className="h-8 w-px bg-gray-200 dark:bg-zinc-700" />
+                  <div className="text-left">
+                    <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wider">Group discount</p>
+                    <p className="text-xl font-bold text-emerald-600">up to {Math.max(...event.discountRules.map(r => r.discountPct))}% off</p>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Event Itinerary / Schedule */}
+      {isUpcoming && (
+        <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 lg:py-14">
+          <div className="text-center mb-8">
+            <div 
+              className="inline-flex items-center justify-center h-11 w-11 rounded-xl mb-4 shadow-md"
+              style={{ background: `linear-gradient(135deg, ${event.primaryColor}, ${event.accentColor})` }}
+            >
+              <ListChecks className="h-5 w-5 text-white" />
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-zinc-100 mb-2">Event Schedule</h2>
+            <p className="text-gray-500 dark:text-zinc-400 text-sm max-w-md mx-auto">What to expect during the event</p>
+          </div>
+          <div className="relative">
+            <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gradient-to-b from-transparent via-gray-200 dark:via-zinc-700 to-transparent" />
+            {(() => {
+              const checkInDate = new Date(event.checkIn);
+              const checkOutDate = new Date(event.checkOut);
+              const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+              const days = [];
+              for (let i = 0; i <= Math.min(nights, 3); i++) {
+                const date = new Date(checkInDate);
+                date.setDate(date.getDate() + i);
+                const isFirstDay = i === 0;
+                const isLastDay = i === nights;
+                days.push(
+                  <div key={i} className="relative flex gap-4 pl-0 mb-6">
+                    <div 
+                      className="relative z-10 h-8 w-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-white shadow-sm"
+                      style={{ background: `linear-gradient(135deg, ${event.primaryColor}, ${event.accentColor})` }}
+                    >
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 bg-white dark:bg-zinc-900 rounded-xl border border-gray-100 dark:border-zinc-700 p-4 shadow-sm">
+                      <div className="flex items-center justify-between mb-1">
+                        <h3 className="font-semibold text-gray-900 dark:text-zinc-100 text-sm">
+                          {isFirstDay ? "Arrival Day" : isLastDay ? "Departure Day" : `Day ${i + 1}`}
+                        </h3>
+                        <span className="text-xs text-gray-400 dark:text-zinc-500">
+                          {date.toLocaleDateString("en-IN", { weekday: "short", month: "short", day: "numeric" })}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-zinc-400">
+                        {isFirstDay ? "Check-in, welcome orientation, room allocation & networking" : 
+                         isLastDay ? "Breakfast, checkout & farewell" :
+                         i === 1 ? "Main event sessions, keynote & group activities" :
+                         "Breakout sessions, leisure time & evening celebrations"}
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return days;
+            })()}
+          </div>
+        </section>
+      )}
 
       {/* Discount Tiers */}
       {event.discountRules.length > 0 && (

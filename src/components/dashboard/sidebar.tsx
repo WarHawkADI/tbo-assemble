@@ -96,7 +96,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="flex h-16 items-center gap-3 border-b border-gray-100 dark:border-zinc-800 px-6">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="TBO Assemble" className="h-10 w-10" />
+        <img src="/logo.svg" alt="TBO Assemble" className="h-10 w-10" />
         <div>
           <h1 className="text-base font-bold text-gray-900 dark:text-zinc-100 tracking-tight">TBO Assemble</h1>
           <p className="text-[10px] font-medium text-gray-400 dark:text-zinc-500 tracking-wide uppercase">Group Travel OS</p>

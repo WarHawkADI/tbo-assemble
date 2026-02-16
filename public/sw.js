@@ -1,12 +1,11 @@
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const CACHE_NAME = `tbo-assemble-${CACHE_VERSION}`;
 const MAX_CACHE_ENTRIES = 100;
 const STATIC_ASSETS = [
   "/",
-  "/logo.png",
+  "/logo.svg",
   "/manifest.json",
   "/favicon.ico",
-  "/favicon.svg",
 ];
 
 // Install — cache static assets

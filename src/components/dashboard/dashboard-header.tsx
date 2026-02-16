@@ -50,9 +50,9 @@ export function DashboardHeader() {
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-zinc-100 tracking-tight">Dashboard</h1>
-        <p className="text-base text-gray-500 dark:text-zinc-400 mt-1">
+      <div className="pl-12 lg:pl-0">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-zinc-100 tracking-tight">Dashboard</h1>
+        <p className="text-sm sm:text-base text-gray-500 dark:text-zinc-400 mt-1">
           Manage your group travel events and track performance
         </p>
       </div>
@@ -94,7 +94,7 @@ export function DashboardHeader() {
 
           {/* Notification Dropdown */}
           {showNotif && (
-            <div className="absolute right-0 top-12 w-80 sm:w-96 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 shadow-2xl z-50 overflow-hidden animate-fade-in" role="dialog" aria-label="Notifications">
+            <div className="absolute right-0 sm:right-0 top-12 w-[calc(100vw-2rem)] sm:w-80 md:w-96 max-w-sm rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 shadow-2xl z-50 overflow-hidden animate-fade-in" role="dialog" aria-label="Notifications">
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-zinc-800">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-zinc-100">Notifications</h3>
                 <div className="flex items-center gap-2">

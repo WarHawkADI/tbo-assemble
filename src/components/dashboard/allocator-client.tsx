@@ -200,7 +200,7 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
   return (
     <div className="animate-fade-in">
       {/* Action Buttons */}
-      <div className="flex justify-end mb-6 gap-3">
+      <div className="flex flex-wrap justify-end mb-6 gap-2 sm:gap-3">
         <Button
           onClick={handleExportRoomingList}
           variant="outline"
@@ -272,7 +272,7 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
         </div>
 
         {/* Floor Plan */}
-        <div className="col-span-3 grid grid-cols-2 gap-4">
+        <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
           {floorWings.map((fw) => (
             <Card
               key={`${fw.floor}-${fw.wing}`}

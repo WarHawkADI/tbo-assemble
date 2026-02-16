@@ -244,7 +244,7 @@ export default function Home() {
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo.png" alt="TBO Assemble" className="h-9 w-9" />
+              <img src="/logo.svg" alt="TBO Assemble" className="h-9 w-9" />
               <div className="flex flex-col">
                 <span className="text-lg font-extrabold text-gray-900 dark:text-zinc-50 tracking-tight leading-tight">TBO Assemble</span>
                 <span className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 tracking-[0.2em] uppercase">Group Travel OS</span>
@@ -268,7 +268,7 @@ export default function Home() {
               <Link href="/dashboard" className="hidden sm:inline-flex items-center rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-700 transition-colors">
                 Sign In
               </Link>
-              <Link href="/dashboard/onboarding" className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#ff6b35] to-[#e55a2b] px-5 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/25 hover:shadow-lg hover:-translate-y-0.5 transition-all btn-shimmer">
+              <Link href="/dashboard/onboarding" className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#ff6b35] to-[#e55a2b] px-4 sm:px-5 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/25 hover:shadow-lg hover:-translate-y-0.5 transition-all btn-shimmer">
                 Get Started <ArrowRight className="h-4 w-4" />
               </Link>
               <button onClick={() => setMobileNav(!mobileNav)} className="md:hidden p-2 rounded-lg text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800" aria-label="Toggle navigation menu" aria-expanded={mobileNav}>
@@ -797,11 +797,11 @@ export default function Home() {
             <p className="mt-3 text-gray-500 dark:text-zinc-400 max-w-xl mx-auto text-base font-medium">See how TBO Assemble replaces manual workflows at every step</p>
           </div>
           <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-          <div className="rounded-2xl border border-gray-200 dark:border-zinc-700 overflow-hidden shadow-sm">
+          <div className="rounded-2xl border border-gray-200 dark:border-zinc-700 overflow-hidden shadow-sm min-w-[480px] sm:min-w-0">
             <div className="grid grid-cols-3">
-                <div className="p-4 bg-gray-50 dark:bg-zinc-800/50 border-b border-gray-200 dark:border-zinc-700 text-sm font-bold text-gray-800 dark:text-zinc-200 uppercase tracking-wider">Task</div>
-              <div className="p-4 bg-red-50/50 dark:bg-red-950/20 border-b border-l border-gray-200 dark:border-zinc-700 text-sm font-bold text-red-600 dark:text-red-400 text-center uppercase tracking-wider">❌ Manual Way</div>
-              <div className="p-4 bg-green-50/50 dark:bg-green-950/20 border-b border-l border-gray-200 dark:border-zinc-700 text-sm font-bold text-green-600 dark:text-green-400 text-center uppercase tracking-wider">✅ TBO Assemble</div>
+                <div className="p-3 sm:p-4 bg-gray-50 dark:bg-zinc-800/50 border-b border-gray-200 dark:border-zinc-700 text-xs sm:text-sm font-bold text-gray-800 dark:text-zinc-200 uppercase tracking-wider">Task</div>
+              <div className="p-3 sm:p-4 bg-red-50/50 dark:bg-red-950/20 border-b border-l border-gray-200 dark:border-zinc-700 text-xs sm:text-sm font-bold text-red-600 dark:text-red-400 text-center uppercase tracking-wider">❌ Manual</div>
+              <div className="p-3 sm:p-4 bg-green-50/50 dark:bg-green-950/20 border-b border-l border-gray-200 dark:border-zinc-700 text-xs sm:text-sm font-bold text-green-600 dark:text-green-400 text-center uppercase tracking-wider">✅ TBO Assemble</div>
             </div>
             {[
               ["Contract Parsing", "Read 20-page PDFs manually", "AI extracts in 30 seconds"],
@@ -814,9 +814,9 @@ export default function Home() {
               ["Multi-Event Mgmt", "Separate spreadsheets", "Unified dashboard"],
             ].map(([task, manual, tbo]) => (
               <div key={task} className="grid grid-cols-3 group hover:bg-gray-50/50 dark:hover:bg-zinc-800/30 transition-colors">
-                <div className="p-3.5 border-b border-gray-100 dark:border-zinc-800 text-sm font-semibold text-gray-800 dark:text-zinc-200">{task}</div>
-                <div className="p-3.5 border-b border-l border-gray-100 dark:border-zinc-800 text-sm text-red-500/80 dark:text-red-400/60 text-center">{manual}</div>
-                <div className="p-3.5 border-b border-l border-gray-100 dark:border-zinc-800 text-sm text-green-600 dark:text-green-400 text-center font-semibold">{tbo}</div>
+                <div className="p-2.5 sm:p-3.5 border-b border-gray-100 dark:border-zinc-800 text-xs sm:text-sm font-semibold text-gray-800 dark:text-zinc-200">{task}</div>
+                <div className="p-2.5 sm:p-3.5 border-b border-l border-gray-100 dark:border-zinc-800 text-xs sm:text-sm text-red-500/80 dark:text-red-400/60 text-center">{manual}</div>
+                <div className="p-2.5 sm:p-3.5 border-b border-l border-gray-100 dark:border-zinc-800 text-xs sm:text-sm text-green-600 dark:text-green-400 text-center font-semibold">{tbo}</div>
               </div>
             ))}
           </div>
@@ -882,7 +882,7 @@ export default function Home() {
             <div className="md:col-span-2">
               <div className="flex items-center gap-2.5 mb-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo.png" alt="TBO Assemble" className="h-7 w-7" />
+                <img src="/logo.svg" alt="TBO Assemble" className="h-7 w-7" />
                 <div>
                   <span className="font-semibold text-gray-900 dark:text-zinc-100 text-sm">TBO Assemble</span>
                   <p className="text-[10px] text-gray-500 dark:text-zinc-500">Powered by TBO.com</p>

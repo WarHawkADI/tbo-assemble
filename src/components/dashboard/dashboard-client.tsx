@@ -23,6 +23,10 @@ import {
   Copy,
   Globe,
   RotateCcw,
+  Play,
+  AlertTriangle,
+  IndianRupee,
+  Zap,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
@@ -59,6 +63,9 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [resettingDemo, setResettingDemo] = useState(false);
   const [copyToast, setCopyToast] = useState("");
+  const [demoRunning, setDemoRunning] = useState(false);
+  const [demoStep, setDemoStep] = useState(0);
+  const [demoNotifications, setDemoNotifications] = useState<{ id: number; text: string; type: string }[]>([]);
 
   // Set initial timestamp after mount to avoid hydration mismatch
   useEffect(() => {
@@ -114,6 +121,73 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
       setResettingDemo(false);
     }
   }, [refreshData]);
+
+  // Live Demo Mode — simulate bookings with animated notifications
+  const runLiveDemo = useCallback(async () => {
+    if (demoRunning) return;
+    setDemoRunning(true);
+    setDemoStep(0);
+    setDemoNotifications([]);
+
+    const demoGuests = [
+      { name: "Priya Sharma", group: "Bride Side", room: "Deluxe King" },
+      { name: "Rahul Mehta", group: "Groom Side", room: "Premium Suite" },
+      { name: "Anita Desai", group: "VIP", room: "Deluxe Twin" },
+      { name: "Vikram Singh", group: "Family", room: "Deluxe King" },
+    ];
+
+    for (let i = 0; i < demoGuests.length; i++) {
+      setDemoStep(i + 1);
+      const guest = demoGuests[i];
+
+      const notifId = Date.now();
+      setDemoNotifications((prev) => [
+        { id: notifId, text: `🎉 ${guest.name} booked ${guest.room} (${guest.group})`, type: "booking" },
+        ...prev.slice(0, 3),
+      ]);
+
+      try {
+        const eventsRes = await fetch("/api/events");
+        if (eventsRes.ok) {
+          const allEvents = await eventsRes.json();
+          if (allEvents.length > 0) {
+            const evt = allEvents[0];
+            const rooms = evt.roomBlocks || [];
+            const availableRoom = rooms.find((r: { totalQty: number; bookedQty: number }) => r.totalQty - r.bookedQty > 0);
+            if (availableRoom) {
+              await fetch("/api/bookings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  eventId: evt.id,
+                  roomBlockId: availableRoom.id,
+                  guestName: guest.name,
+                  guestEmail: `${guest.name.toLowerCase().replace(/\s/g, ".")}@demo.com`,
+                  guestPhone: `+91 98765 ${String(43210 + i).slice(0, 5)}`,
+                  guestGroup: guest.group,
+                  selectedAddOns: [],
+                  totalAmount: availableRoom.rate * 2,
+                }),
+              });
+            }
+          }
+        }
+      } catch {
+        // Continue demo
+      }
+
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    await refreshData();
+    setDemoNotifications((prev) => [
+      { id: Date.now(), text: "✅ Live demo complete — 4 bookings simulated!", type: "success" },
+      ...prev.slice(0, 3),
+    ]);
+    setTimeout(() => setDemoNotifications([]), 5000);
+    setDemoRunning(false);
+    setDemoStep(0);
+  }, [demoRunning, refreshData]);
 
   useEffect(() => {
     const interval = setInterval(refreshData, 30000);
@@ -220,7 +294,7 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
               <p className="text-xs font-medium text-gray-500 dark:text-zinc-400 uppercase tracking-wide">Total Events</p>
               <Calendar className="h-4 w-4 text-[#ff6b35]" />
             </div>
-            <AnimatedCounter value={events.length} className="text-3xl font-bold text-gray-900 dark:text-zinc-100" />
+            <AnimatedCounter value={events.length} className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-zinc-100" />
           </CardContent>
         </Card>
 
@@ -233,7 +307,7 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
             </div>
             <AnimatedCounter
               value={totalRevenue}
-              className="text-3xl font-bold text-gray-900 dark:text-zinc-100"
+              className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-zinc-100"
               prefix="₹"
               formatter={(n) => n.toLocaleString("en-IN")}
             />
@@ -247,7 +321,7 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
               <p className="text-xs font-medium text-gray-500 dark:text-zinc-400 uppercase tracking-wide">Total Guests</p>
               <Users className="h-4 w-4 text-purple-600" />
             </div>
-            <AnimatedCounter value={totalGuests} className="text-3xl font-bold text-gray-900 dark:text-zinc-100" />
+            <AnimatedCounter value={totalGuests} className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-zinc-100" />
           </CardContent>
         </Card>
 
@@ -261,16 +335,108 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
             <AnimatedCounter
               value={totalRooms > 0 ? Math.round((bookedRooms / totalRooms) * 100) : 0}
               suffix="%"
-              className="text-3xl font-bold text-gray-900 dark:text-zinc-100"
+              className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-zinc-100"
             />
             <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{bookedRooms}/{totalRooms} rooms</p>
           </CardContent>
         </Card>
       </div>
 
+      {/* Revenue At-Risk Banner + Live Demo Mode */}
+      {(totalRooms - bookedRooms > 0 || demoRunning) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          {/* Revenue At-Risk */}
+          <Card className="border-0 shadow-sm overflow-hidden relative border-l-4 border-l-red-500">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/50">
+                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide">Revenue At Risk</p>
+                    <p className="text-[10px] text-gray-400 dark:text-zinc-500">Unsold rooms × avg rate</p>
+                  </div>
+                </div>
+                <IndianRupee className="h-4 w-4 text-red-400" />
+              </div>
+              <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                ₹{(events.reduce((s, e) => {
+                  const unsold = e.totalRooms - e.bookedRooms;
+                  const avgRate = e.totalRevenue > 0 && e.bookedRooms > 0 ? e.totalRevenue / e.bookedRooms : 5000;
+                  return s + (unsold * avgRate);
+                }, 0)).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              </p>
+              <div className="mt-3 h-2 bg-gray-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-700"
+                  style={{ width: `${totalRooms > 0 ? Math.round((bookedRooms / totalRooms) * 100) : 0}%` }}
+                />
+              </div>
+              <div className="flex justify-between mt-1.5 text-[10px] text-gray-400 dark:text-zinc-500">
+                <span>{bookedRooms} secured</span>
+                <span>{totalRooms - bookedRooms} at risk</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Live Demo Mode */}
+          <Card className="border-0 shadow-sm overflow-hidden relative border-l-4 border-l-violet-500">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/50">
+                    <Zap className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wide">Live Demo Mode</p>
+                    <p className="text-[10px] text-gray-400 dark:text-zinc-500">Simulate real bookings</p>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-zinc-400 mb-3">
+                Instantly generate 4 realistic bookings with animated notifications to showcase the platform.
+              </p>
+              <button
+                onClick={runLiveDemo}
+                disabled={demoRunning}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ background: demoRunning ? '#7c3aed' : 'linear-gradient(135deg, #7c3aed, #a855f7)' }}
+              >
+                {demoRunning ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Simulating... ({demoStep}/4)
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4" />
+                    Run Live Demo
+                  </>
+                )}
+              </button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Demo Notifications */}
+      {demoNotifications.length > 0 && (
+        <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
+          {demoNotifications.map((notif) => (
+            <div
+              key={notif.id}
+              className="px-4 py-3 rounded-xl shadow-lg text-sm font-medium animate-in slide-in-from-right-5 fade-in bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-800 dark:text-zinc-200"
+            >
+              {notif.text}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Search and Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
-        <div className="flex-1 min-w-[250px] relative">
+        <div className="w-full sm:flex-1 sm:min-w-[200px] relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-zinc-500" />
           <Input
             placeholder="Search events by name, venue, or location..."
@@ -313,11 +479,11 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
             onClick={resetDemo}
             disabled={resettingDemo}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors disabled:opacity-50"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors disabled:opacity-50"
             title="Reset demo data"
           >
             <RotateCcw className={`h-3.5 w-3.5 ${resettingDemo ? "animate-spin" : ""}`} />

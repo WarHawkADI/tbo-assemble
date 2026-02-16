@@ -7,6 +7,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   active: ["completed", "cancelled"],
   completed: ["active"], // Allow reactivation
   cancelled: ["draft"],  // Allow restart
+  published: ["active", "cancelled"], // Published events can go active or be cancelled
 };
 
 export async function PATCH(

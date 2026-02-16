@@ -488,3 +488,54 @@ table {
     display: none;
   }
 }
+
+/* ── Mobile-first responsive utilities ────────────────────────── */
+
+/* Ensure no horizontal overflow on mobile */
+@media (max-width: 640px) {
+  /* Tighten scrollbar for mobile */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  /* Ensure body doesn't overflow horizontally */
+  html, body {
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Better touch targets — minimum 44px */
+  button, a, [role="button"], select {
+    min-height: 44px;
+  }
+
+  /* Small form inputs are OK */
+  input, textarea {
+    font-size: 16px; /* Prevents iOS zoom on focus */
+  }
+
+  /* Mobile-friendly tables */
+  .mobile-scroll-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .mobile-scroll-table table {
+    min-width: 600px;
+  }
+}
+
+/* Safe area insets for notched phones */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+}
