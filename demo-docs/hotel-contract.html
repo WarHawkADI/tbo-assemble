@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hotel Group Booking Contract — Grand Hyatt Udaipur</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&family=Crimson+Pro:ital,wght@0,400;0,500;1,400&display=swap');
+
+    :root {
+      --gold: #C9A84C;
+      --gold-light: #E8D48B;
+      --navy: #1B2A4A;
+      --navy-light: #2D4470;
+      --cream: #FAF6EF;
+      --text: #2C2C2C;
+      --text-light: #5A5A5A;
+      --border: #D4C5A0;
+      --red-accent: #8B2D2D;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f0ebe3;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .page {
+      max-width: 850px;
+      margin: 0 auto;
+      background: white;
+      box-shadow: 0 4px 40px rgba(0,0,0,0.1);
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
+      color: white;
+      padding: 40px 50px 35px;
+      position: relative;
+      overflow: hidden;
+    }
+    .header::before {
+      content: '';
+      position: absolute;
+      top: 0; right: 0;
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, rgba(201,168,76,0.15) 0%, transparent 70%);
+      border-radius: 50%;
+      transform: translate(80px, -100px);
+    }
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--gold), var(--gold-light), var(--gold));
+    }
+    .hotel-brand {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 24px;
+      position: relative;
+      z-index: 1;
+    }
+    .hotel-logo {
+      width: 70px; height: 70px;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--gold-light) 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Playfair Display', serif;
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--navy);
+      flex-shrink: 0;
+      box-shadow: 0 4px 20px rgba(201,168,76,0.3);
+    }
+    .hotel-name-block h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      line-height: 1.2;
+    }
+    .hotel-name-block p {
+      font-size: 13px;
+      color: rgba(255,255,255,0.7);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+    .contract-title {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    .contract-title h2 {
+      font-size: 16px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: var(--gold);
+    }
+    .contract-ref {
+      text-align: right;
+      font-size: 11px;
+      color: rgba(255,255,255,0.6);
+      line-height: 1.5;
+    }
+
+    /* ── Body ── */
+    .body {
+      padding: 40px 50px;
+    }
+
+    /* ── Sections ── */
+    .section {
+      margin-bottom: 32px;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--cream);
+    }
+    .section-number {
+      width: 28px; height: 28px;
+      background: var(--navy);
+      color: var(--gold);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .section-header h3 {
+      font-family: 'Playfair Display', serif;
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--navy);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* ── Info Grid ── */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .info-item {
+      background: var(--cream);
+      border-radius: 8px;
+      padding: 14px 18px;
+      border-left: 3px solid var(--gold);
+    }
+    .info-item.full {
+      grid-column: 1 / -1;
+    }
+    .info-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-light);
+      margin-bottom: 3px;
+    }
+    .info-value {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--navy);
+    }
+
+    /* ── Table ── */
+    .table-wrapper {
+      border: 1px solid #e0d8c8;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    thead {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
+    }
+    thead th {
+      padding: 12px 16px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--gold);
+      text-align: left;
+    }
+    thead th:last-child, thead th:nth-child(3), thead th:nth-child(4) {
+      text-align: center;
+    }
+    tbody td {
+      padding: 13px 16px;
+      font-size: 13px;
+      border-bottom: 1px solid #f0ebe3;
+      color: var(--text);
+    }
+    tbody td:last-child, tbody td:nth-child(3), tbody td:nth-child(4) {
+      text-align: center;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #fdfcf9; }
+    .rate {
+      font-weight: 700;
+      color: var(--navy);
+      font-size: 14px;
+    }
+    .hotel-tag {
+      display: inline-block;
+      background: var(--gold);
+      color: var(--navy);
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 3px;
+    }
+    .hotel-tag.alt {
+      background: linear-gradient(135deg, #e8d0b0, #d4a574);
+    }
+
+    /* ── Add-ons ── */
+    .addon-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .addon-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--cream);
+      border-radius: 8px;
+      border: 1px solid #e8e0d0;
+    }
+    .addon-name {
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .addon-price {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--navy);
+    }
+    .addon-price.included {
+      color: #2d7a3d;
+      font-size: 11px;
+      background: #e6f4ea;
+      padding: 2px 10px;
+      border-radius: 20px;
+    }
+    .addon-price.paid {
+      color: var(--navy);
+    }
+
+    /* ── Attrition ── */
+    .attrition-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      position: relative;
+      padding-left: 30px;
+    }
+    .attrition-timeline::before {
+      content: '';
+      position: absolute;
+      left: 12px;
+      top: 10px;
+      bottom: 10px;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--gold), var(--red-accent));
+    }
+    .attrition-item {
+      position: relative;
+      padding: 14px 18px;
+      margin-bottom: 10px;
+      background: var(--cream);
+      border-radius: 8px;
+      border: 1px solid #e8e0d0;
+    }
+    .attrition-item::before {
+      content: '';
+      position: absolute;
+      left: -24px;
+      top: 20px;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      border: 3px solid var(--gold);
+      background: white;
+    }
+    .attrition-item:last-child::before {
+      border-color: var(--red-accent);
+      background: #fce8e8;
+    }
+    .attrition-date {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--navy);
+    }
+    .attrition-percent {
+      display: inline-block;
+      background: var(--navy);
+      color: var(--gold);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 10px;
+      border-radius: 20px;
+      margin-left: 10px;
+    }
+    .attrition-desc {
+      font-size: 12px;
+      color: var(--text-light);
+      margin-top: 4px;
+      font-style: italic;
+    }
+    .penalty-note {
+      font-size: 11px;
+      color: var(--red-accent);
+      font-weight: 600;
+    }
+
+    /* ── Terms ── */
+    .terms-list {
+      list-style: none;
+      padding: 0;
+    }
+    .terms-list li {
+      position: relative;
+      padding: 8px 0 8px 24px;
+      font-size: 12px;
+      color: var(--text-light);
+      line-height: 1.6;
+      border-bottom: 1px solid #f5f0e8;
+    }
+    .terms-list li::before {
+      content: '§';
+      position: absolute;
+      left: 0;
+      color: var(--gold);
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    /* ── Signatures ── */
+    .signatures {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      margin-top: 30px;
+      padding-top: 25px;
+      border-top: 2px solid var(--cream);
+    }
+    .sig-block {
+      text-align: center;
+    }
+    .sig-line {
+      width: 100%;
+      height: 1px;
+      background: var(--text);
+      margin-top: 50px;
+      margin-bottom: 8px;
+    }
+    .sig-name {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--navy);
+    }
+    .sig-title {
+      font-size: 11px;
+      color: var(--text-light);
+    }
+
+    /* ── Footer ── */
+    .footer {
+      background: var(--cream);
+      padding: 20px 50px;
+      text-align: center;
+      font-size: 10px;
+      color: var(--text-light);
+      border-top: 1px solid #e0d8c8;
+      line-height: 1.7;
+    }
+    .footer strong {
+      color: var(--navy);
+    }
+
+    /* ── Watermark ── */
+    .watermark {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-35deg);
+      font-family: 'Playfair Display', serif;
+      font-size: 100px;
+      font-weight: 800;
+      color: rgba(201, 168, 76, 0.04);
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .confidential-stamp {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #fef2f2;
+      border: 1px solid #fca5a5;
+      color: var(--red-accent);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      padding: 4px 14px;
+      border-radius: 4px;
+      margin-top: 12px;
+    }
+
+    .highlight-box {
+      background: linear-gradient(135deg, #fef9ef, #fdf5e3);
+      border: 1px solid var(--gold);
+      border-radius: 10px;
+      padding: 18px 22px;
+      margin-top: 14px;
+    }
+    .highlight-box p {
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.7;
+    }
+    .highlight-box strong {
+      color: var(--navy);
+    }
+
+    @media print {
+      body { background: white; }
+      .page { box-shadow: none; max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="watermark">GRAND HYATT</div>
+
+  <div class="page">
+    <!-- HEADER -->
+    <div class="header">
+      <div class="hotel-brand">
+        <div class="hotel-logo">GH</div>
+        <div class="hotel-name-block">
+          <h1>The Grand Hyatt Resort & Spa</h1>
+          <p>Udaipur, Rajasthan, India</p>
+        </div>
+      </div>
+      <div class="contract-title">
+        <div>
+          <h2>Group Booking Contract</h2>
+          <div class="confidential-stamp">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Confidential
+          </div>
+        </div>
+        <div class="contract-ref">
+          Contract No: <strong style="color: var(--gold);">GHU/GRP/2026/0147</strong><br>
+          Date of Issue: January 15, 2026<br>
+          Valid Until: February 28, 2026
+        </div>
+      </div>
+    </div>
+
+    <!-- BODY -->
+    <div class="body">
+
+      <!-- Section 1: Event Information -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-number">1</div>
+          <h3>Event Information</h3>
+        </div>
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Event Name</div>
+            <div class="info-value">Sharma-Patel Wedding</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Event Type</div>
+            <div class="info-value">Destination Wedding</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Check-In Date</div>
+            <div class="info-value">April 10, 2026 (Friday)</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Check-Out Date</div>
+            <div class="info-value">April 13, 2026 (Monday)</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Duration</div>
+            <div class="info-value">3 Nights / 4 Days</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Expected Guests</div>
+            <div class="info-value">120 – 150 Guests</div>
+          </div>
+          <div class="info-item full">
+            <div class="info-label">Coordinating Agent</div>
+            <div class="info-value">Rajesh Kumar · TBO Travel Solutions Pvt. Ltd. · +91 98765 43210</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 2: Room Blocks -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-number">2</div>
+          <h3>Room Block Inventory & Negotiated Rates</h3>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Room Category</th>
+                <th>Property</th>
+                <th>Qty</th>
+                <th>Floor / Wing</th>
+                <th>Rate / Night (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <strong>Deluxe Room</strong><br>
+                  <span style="font-size: 11px; color: #888;">Lake view, 45 sqm, king bed</span>
+                </td>
+                <td>
+                  Grand Hyatt Resort & Spa
+                  <br><span class="hotel-tag">Primary Property</span>
+                </td>
+                <td><strong>30</strong> rooms</td>
+                <td>Floors 2–3<br>East Wing</td>
+                <td><span class="rate">₹12,000</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <strong>Premium Suite</strong><br>
+                  <span style="font-size: 11px; color: #888;">Panoramic view, 72 sqm, separate lounge</span>
+                </td>
+                <td>
+                  Grand Hyatt Resort & Spa
+                  <br><span class="hotel-tag">Primary Property</span>
+                </td>
+                <td><strong>15</strong> rooms</td>
+                <td>Floor 4<br>East Wing</td>
+                <td><span class="rate">₹22,000</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <strong>Royal Suite</strong><br>
+                  <span style="font-size: 11px; color: #888;">Heritage palace wing, 120 sqm, butler service</span>
+                </td>
+                <td>
+                  Taj Lake Palace
+                  <br><span class="hotel-tag alt">Partner Property</span>
+                </td>
+                <td><strong>5</strong> rooms</td>
+                <td>Floor 5<br>Tower Wing</td>
+                <td><span class="rate">₹45,000</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="highlight-box">
+          <p>
+            <strong>Total Protected Inventory:</strong> 50 rooms across 2 properties &nbsp;|&nbsp;
+            <strong>Total Block Value:</strong> ₹12,15,000 per night &nbsp;|&nbsp;
+            <strong>3-Night Block Value:</strong> ₹36,45,000<br>
+            All rates are <strong>exclusive of 18% GST</strong> (CGST 9% + SGST 9%). Rates include complimentary breakfast for up to 2 guests per room.
+          </p>
+        </div>
+      </div>
+
+      <!-- Section 3: Inclusions & Add-Ons -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-number">3</div>
+          <h3>Inclusions & Premium Add-Ons</h3>
+        </div>
+        <div class="addon-grid">
+          <div class="addon-card">
+            <div class="addon-name">🎉 Welcome Dinner</div>
+            <div class="addon-price included">✓ Complimentary</div>
+          </div>
+          <div class="addon-card">
+            <div class="addon-name">🎨 Mehendi Ceremony Pass</div>
+            <div class="addon-price included">✓ Complimentary</div>
+          </div>
+          <div class="addon-card">
+            <div class="addon-name">🚗 Airport Pickup (Group)</div>
+            <div class="addon-price paid">₹1,500 / guest</div>
+          </div>
+          <div class="addon-card">
+            <div class="addon-name">✨ Gala Night Pass</div>
+            <div class="addon-price paid">₹2,500 / guest</div>
+          </div>
+          <div class="addon-card">
+            <div class="addon-name">💆 Spa Package</div>
+            <div class="addon-price paid">₹3,000 / guest</div>
+          </div>
+          <div class="addon-card">
+            <div class="addon-name">🏛️ Heritage City Tour</div>
+            <div class="addon-price paid">₹2,000 / guest</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 4: Attrition Policy -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-number">4</div>
+          <h3>Attrition Policy & Release Schedule</h3>
+        </div>
+        <div class="attrition-timeline">
+          <div class="attrition-item">
+            <div>
+              <span class="attrition-date">March 10, 2026</span>
+              <span class="attrition-percent">30% Release</span>
+            </div>
+            <div class="attrition-desc">Release 30% of unsold rooms (15 rooms) back to general inventory — 30 days prior to check-in.</div>
+          </div>
+          <div class="attrition-item">
+            <div>
+              <span class="attrition-date">March 25, 2026</span>
+              <span class="attrition-percent">50% Release</span>
+            </div>
+            <div class="attrition-desc">Release 50% of remaining unsold rooms back to general inventory — 15 days prior to check-in.</div>
+          </div>
+          <div class="attrition-item">
+            <div>
+              <span class="attrition-date">April 3, 2026</span>
+              <span class="attrition-percent">100% Release</span>
+            </div>
+            <div class="attrition-desc">Release all unsold rooms — 7 days prior to check-in. Full cancellation penalty applies on uncommitted block.</div>
+            <div class="penalty-note" style="margin-top: 6px;">⚠ Penalty: 100% of first night's tariff on remaining uncommitted rooms.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 5: Terms -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-number">5</div>
+          <h3>General Terms & Conditions</h3>
+        </div>
+        <ul class="terms-list">
+          <li>All reservations within the block must be made under the <strong>group code GHU-SP-2026</strong> to receive contracted rates.</li>
+          <li>Individual guests may book through the designated event booking portal or by contacting the coordinating agent directly.</li>
+          <li>Early check-in (before 2:00 PM) and late check-out (after 11:00 AM) are subject to availability and may incur additional charges of 50% of the night rate.</li>
+          <li>The Hotel reserves the right to reassign room allocations within the same category if specific floor/wing assignments become unavailable due to maintenance.</li>
+          <li>Group billing shall be settled via a single master invoice raised to TBO Travel Solutions Pvt. Ltd. within 30 days of the event conclusion.</li>
+          <li>Complimentary inclusions (Welcome Dinner, Mehendi Ceremony) are for registered group guests only, limited to the contracted guest count.</li>
+          <li>The Taj Lake Palace rooms are subject to a separate cancellation policy — full prepayment required 21 days prior to check-in.</li>
+          <li>This contract is governed by the laws of Rajasthan, India. All disputes shall be subject to Udaipur jurisdiction.</li>
+        </ul>
+      </div>
+
+      <!-- Signatures -->
+      <div class="signatures">
+        <div class="sig-block">
+          <div class="sig-line"></div>
+          <div class="sig-name">Vikram Singh Rathore</div>
+          <div class="sig-title">Director of Sales & Group Business<br>The Grand Hyatt Resort & Spa, Udaipur</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-line"></div>
+          <div class="sig-name">Rajesh Kumar</div>
+          <div class="sig-title">Senior Travel Consultant<br>TBO Travel Solutions Pvt. Ltd.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <strong>The Grand Hyatt Resort & Spa, Udaipur</strong> &nbsp;·&nbsp; Amet Road, Ekling Ji, Udaipur, Rajasthan 313001, India<br>
+      Tel: +91 294 266 1234 &nbsp;·&nbsp; Email: groups@grandhyattudaipur.com &nbsp;·&nbsp; GSTIN: 08AABCG1234H1ZP<br>
+      <span style="color: #b0a080;">This is a confidential document. Reproduction or distribution without consent is prohibited.</span>
+    </div>
+  </div>
+</body>
+</html>
