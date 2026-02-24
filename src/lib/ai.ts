@@ -1,8 +1,9 @@
-import OpenAI from "openai";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || "",
-});
+/**
+ * AI / Parsing Interfaces & Demo Data
+ *
+ * The actual parsing logic lives in ./local-parser.ts (regex + pdf-parse, no API key needed).
+ * This file exports shared TypeScript interfaces and the demo/fallback data.
+ */
 
 export interface ParsedContract {
   venue: string;
@@ -38,115 +39,7 @@ export interface ParsedInvite {
   description: string;
 }
 
-export async function parseContractWithAI(
-  base64File: string,
-  mimeType: string
-): Promise<ParsedContract> {
-  // If no API key, return demo data
-  if (!process.env.OPENAI_API_KEY) {
-    return getDemoContractData();
-  }
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: `You are a contract parsing AI. Extract hotel group booking contract details into structured JSON. Return ONLY valid JSON with this exact structure:
-{
-  "venue": "Hotel Name",
-  "location": "City, Country",
-  "checkIn": "YYYY-MM-DD",
-  "checkOut": "YYYY-MM-DD",
-  "rooms": [{"roomType": "Type", "rate": 0, "quantity": 0, "floor": "", "wing": ""}],
-  "addOns": [{"name": "Service", "price": 0, "isIncluded": false}],
-  "attritionRules": [{"releaseDate": "YYYY-MM-DD", "releasePercent": 0, "description": ""}]
-}`,
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:${mimeType};base64,${base64File}`,
-              },
-            },
-            {
-              type: "text",
-              text: "Parse this hotel contract and extract all booking details, room blocks, rates, dates, add-ons/inclusions, and attrition/release rules. Return structured JSON only.",
-            },
-          ],
-        },
-      ],
-      max_tokens: 2000,
-      temperature: 0.1,
-    });
-
-    const content = response.choices[0]?.message?.content || "";
-    const jsonStr = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-    return JSON.parse(jsonStr) as ParsedContract;
-  } catch (error) {
-    console.error("AI parsing error:", error);
-    return getDemoContractData();
-  }
-}
-
-export async function parseInviteWithAI(
-  base64File: string,
-  mimeType: string
-): Promise<ParsedInvite> {
-  if (!process.env.OPENAI_API_KEY) {
-    return getDemoInviteData();
-  }
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: `You are a design AI that extracts event information and color themes from wedding/event invitations. Return ONLY valid JSON:
-{
-  "eventName": "Event Name",
-  "eventType": "wedding",
-  "primaryColor": "#hex",
-  "secondaryColor": "#hex",
-  "accentColor": "#hex",
-  "description": "Brief event description"
-}`,
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:${mimeType};base64,${base64File}`,
-              },
-            },
-            {
-              type: "text",
-              text: "Extract the event name, type (wedding/conference/mice), dominant color palette (as hex codes), and a brief description from this invitation image.",
-            },
-          ],
-        },
-      ],
-      max_tokens: 500,
-      temperature: 0.1,
-    });
-
-    const content = response.choices[0]?.message?.content || "";
-    const jsonStr = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-    return JSON.parse(jsonStr) as ParsedInvite;
-  } catch (error) {
-    console.error("AI invite parsing error:", error);
-    return getDemoInviteData();
-  }
-}
-
-function getDemoContractData(): ParsedContract {
+export function getDemoContractData(): ParsedContract {
   return {
     venue: "The Grand Hyatt Resort & Spa",
     location: "Udaipur, Rajasthan",
@@ -172,7 +65,7 @@ function getDemoContractData(): ParsedContract {
   };
 }
 
-function getDemoInviteData(): ParsedInvite {
+export function getDemoInviteData(): ParsedInvite {
   return {
     eventName: "The Sharma-Patel Wedding",
     eventType: "wedding",

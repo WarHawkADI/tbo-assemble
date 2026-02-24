@@ -394,10 +394,10 @@ export default function Home() {
 
             {/* Demo event link */}
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-xs">
-              <Link href="/event/grand-hyatt-annual-conference" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-800/40 text-blue-700 dark:text-blue-400 font-medium hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors">
+              <Link href="/event/techconnect-summit-2026" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-800/40 text-blue-700 dark:text-blue-400 font-medium hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors">
                 <Globe className="h-3 w-3" /> View Sample MICE Microsite
               </Link>
-              <Link href="/event/royal-rajputana-wedding" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/40 text-pink-700 dark:text-pink-400 font-medium hover:bg-pink-100 dark:hover:bg-pink-950/50 transition-colors">
+              <Link href="/event/sharma-patel-wedding-2026" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/40 text-pink-700 dark:text-pink-400 font-medium hover:bg-pink-100 dark:hover:bg-pink-950/50 transition-colors">
                 <Heart className="h-3 w-3" /> View Sample Wedding Microsite
               </Link>
             </div>
@@ -913,8 +913,8 @@ export default function Home() {
               <h4 className="text-xs font-semibold text-gray-900 dark:text-zinc-100 uppercase tracking-wider mb-3">Demo Events</h4>
               <div className="space-y-2">
                 {[
-                  { href: "/event/grand-hyatt-annual-conference", label: "MICE Conference" },
-                  { href: "/event/royal-rajputana-wedding", label: "Destination Wedding" },
+                  { href: "/event/techconnect-summit-2026", label: "MICE Conference" },
+                  { href: "/event/sharma-patel-wedding-2026", label: "Destination Wedding" },
                 ].map((l) => (
                   <Link key={l.href} href={l.href} className="block text-xs text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-100 transition-colors">{l.label}</Link>
                 ))}
