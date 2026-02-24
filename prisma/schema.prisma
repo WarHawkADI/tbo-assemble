@@ -177,6 +177,8 @@ model Waitlist {
   @@index([status])
   @@index([roomBlockId])
 }
+
+model ActivityLog {
   id        String   @id @default(uuid())
   eventId   String
   event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
