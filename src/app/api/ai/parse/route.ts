@@ -88,9 +88,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if we have any MEANINGFUL data — not just default colors from a random image.
-    // Contract must have a venue, or invite must have an event name.
-    const hasRealContract = contractData && contractData.venue && contractData.venue !== "Unknown Venue";
+    // Check if we have any MEANINGFUL data.
+    // Contract is real if it has any venue name (even "Unknown" means text was extracted and parsed)
+    // or if it has room data or dates extracted.
+    const hasRealContract = contractData && (
+      (contractData.venue && contractData.venue !== "Unknown Venue") ||
+      (contractData.rooms && contractData.rooms.length > 0 && contractData.rooms[0].rate > 0) ||
+      (contractData.checkIn && contractData.checkIn.length > 0)
+    );
     const hasRealInvite = inviteData && inviteData.eventName && inviteData.eventName.length > 0;
 
     if (!hasRealContract && !hasRealInvite) {

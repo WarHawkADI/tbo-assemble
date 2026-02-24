@@ -10,6 +10,9 @@ export interface ParsedContract {
   location: string;
   checkIn: string;
   checkOut: string;
+  eventName: string;
+  eventType: string;
+  clientName: string;
   rooms: {
     roomType: string;
     rate: number;
@@ -45,6 +48,9 @@ export function getDemoContractData(): ParsedContract {
     location: "Udaipur, Rajasthan",
     checkIn: "2026-04-10",
     checkOut: "2026-04-13",
+    eventName: "The Sharma-Patel Wedding",
+    eventType: "wedding",
+    clientName: "Sharma & Patel Families",
     rooms: [
       { roomType: "Deluxe Room", rate: 12000, quantity: 30, floor: "2-3", wing: "East Wing", hotelName: "The Grand Hyatt Resort & Spa" },
       { roomType: "Premium Suite", rate: 22000, quantity: 15, floor: "4", wing: "East Wing", hotelName: "The Grand Hyatt Resort & Spa" },

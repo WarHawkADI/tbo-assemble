@@ -1,157 +1,229 @@
 /**
  * Local Document Parser — No OpenAI Required
  *
- * Extracts structured hotel contract data from PDFs using pdf-parse + regex.
- * Extracts dominant colors from images using sharp.
- * Validates documents before parsing — refuses irrelevant uploads.
+ * Multi-strategy text extraction:
+ *   1. pdf-parse for text-based PDFs (fast, handles 90% of cases)
+ *   2. JPEG stream extraction + tesseract.js OCR for scanned PDFs
+ *   3. Direct tesseract.js OCR for uploaded images (PNG/JPEG/WebP)
+ *
+ * Extraction pipeline:
+ *   1. Normalize extracted text (whitespace, broken lines, PDF artifacts)
+ *   2. Extract labeled key:value fields ("Hotel Name: Grand Horizon Hotel")
+ *   3. Parse tabular data (services, room blocks, charges)
+ *   4. Regex-based extraction for venue, location, dates, rooms, add-ons, attrition
+ *
+ * Designed to handle messy real-world PDFs: broken table formatting,
+ * inconsistent whitespace, multi-line fields, and varied naming conventions.
  */
 
 import type { ParsedContract, ParsedInvite } from "./ai";
 
-// ─── PDF Text Extraction ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// TEXT EXTRACTION
+// ═══════════════════════════════════════════════════════════════════════════════
 
+/** Extract text from a text-based PDF using pdf-parse. */
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   // Import the internal module directly to avoid pdf-parse's index.js self-test
   // which tries to read test/data/05-versions-space.pdf and fails in bundled environments
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (buf: Buffer) => Promise<{ text: string; numpages: number }>;
+  const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (
+    buf: Buffer
+  ) => Promise<{ text: string; numpages: number }>;
   const data = await pdfParse(buffer);
   return data.text || "";
 }
 
-// ─── Validation ───────────────────────────────────────────────────────────────
+/**
+ * Normalize messy PDF-extracted text by collapsing whitespace runs,
+ * fixing broken lines, and removing common PDF artifacts.
+ */
+function normalizeText(raw: string): string {
+  let text = raw
+    // Replace form-feed / vertical-tab / page-break markers
+    .replace(/[\f\v]/g, "\n")
+    // Collapse multiple spaces/tabs into a single space (preserve newlines)
+    .replace(/[^\S\n]+/g, " ")
+    // Collapse 3+ blank lines into 2
+    .replace(/\n{3,}/g, "\n\n")
+    // Trim each line
+    .split("\n")
+    .map((l) => l.trim())
+    .join("\n")
+    .trim();
+
+  // Collapse spaced-out decorative text: "D A T E" → "DATE", "V E N U E" → "VENUE"
+  // Detects runs of single characters separated by single spaces (3+ chars)
+  text = text.replace(
+    /\b([A-Za-z])( [A-Za-z]){2,}\b/g,
+    (match) => match.replace(/ /g, "")
+  );
+
+  return text;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OCR SUPPORT (for scanned PDFs and image uploads)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Extract JPEG image buffers embedded in a PDF binary.
+ * Scanned PDFs typically wrap JPEG images in PDF stream objects.
+ * Searches for JPEG SOI (FFD8) and EOI (FFD9) markers in the raw bytes.
+ */
+function extractJPEGsFromPDFBuffer(buffer: Buffer): Buffer[] {
+  const jpegs: Buffer[] = [];
+  const SOI = Buffer.from([0xff, 0xd8]); // JPEG Start Of Image
+  const EOI = Buffer.from([0xff, 0xd9]); // JPEG End Of Image
+
+  let searchFrom = 0;
+  while (searchFrom < buffer.length - 2) {
+    const soiIdx = buffer.indexOf(SOI, searchFrom);
+    if (soiIdx === -1) break;
+
+    const eoiIdx = buffer.indexOf(EOI, soiIdx + 2);
+    if (eoiIdx === -1) break;
+
+    const jpegEnd = eoiIdx + 2;
+    const jpegBuf = buffer.subarray(soiIdx, jpegEnd);
+
+    // Only keep images > 10KB (skip thumbnails, icons, artifacts)
+    if (jpegBuf.length > 10240) {
+      jpegs.push(Buffer.from(jpegBuf));
+    }
+
+    searchFrom = jpegEnd;
+  }
+
+  return jpegs;
+}
+
+/**
+ * Perform OCR on an image buffer using tesseract.js.
+ * Preprocesses the image with sharp for better recognition.
+ */
+async function performOCR(imageBuffer: Buffer): Promise<string> {
+  try {
+    // Preprocess with sharp: grayscale + normalize + sharpen for better OCR
+    let processedBuffer = imageBuffer;
+    try {
+      const sharp = (await import("sharp")).default;
+      processedBuffer = await sharp(imageBuffer)
+        .grayscale()
+        .normalize()
+        .sharpen()
+        .toBuffer();
+    } catch {
+      // If sharp preprocessing fails, use raw buffer
+    }
+
+    const { createWorker } = await import("tesseract.js");
+    const worker = await createWorker("eng");
+    const {
+      data: { text },
+    } = await worker.recognize(processedBuffer);
+    await worker.terminate();
+    return text || "";
+  } catch (err) {
+    console.error("OCR error:", err);
+    return "";
+  }
+}
+
+/**
+ * Extract text from a PDF with OCR fallback.
+ * Tries pdf-parse first. If too little text is extracted (<50 chars),
+ * attempts to OCR embedded JPEG images from the PDF.
+ */
+async function extractTextWithOCRFallback(
+  buffer: Buffer
+): Promise<{ text: string; usedOCR: boolean }> {
+  let text = "";
+
+  // Strategy 1: pdf-parse (fast, handles text PDFs)
+  // Some corrupted PDFs (bad XRef entries) fail on first parse but succeed on retry
+  // after pdfjs-dist caches internal recovery data, so we attempt up to 2 tries.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      text = await extractTextFromPDF(buffer);
+      break; // success
+    } catch {
+      // pdf-parse failed, retry once then fall through to OCR
+    }
+  }
+
+  const normalizedText = normalizeText(text);
+
+  // If we got reasonable text, use it
+  if (normalizedText.length >= 50) {
+    return { text: normalizedText, usedOCR: false };
+  }
+
+  // Strategy 2: Extract embedded JPEGs and OCR them
+  const jpegs = extractJPEGsFromPDFBuffer(buffer);
+  if (jpegs.length > 0) {
+    const ocrTexts: string[] = [];
+    // OCR up to 10 pages to avoid excessive processing
+    for (const jpeg of jpegs.slice(0, 10)) {
+      const ocrText = await performOCR(jpeg);
+      if (ocrText.trim().length > 10) {
+        ocrTexts.push(ocrText);
+      }
+    }
+    if (ocrTexts.length > 0) {
+      return { text: normalizeText(ocrTexts.join("\n\n")), usedOCR: true };
+    }
+  }
+
+  // Return whatever we got from pdf-parse, even if minimal
+  return { text: normalizedText, usedOCR: false };
+}
+
+/**
+ * Perform OCR on a direct image upload (PNG/JPEG/WebP).
+ */
+async function extractTextFromImage(buffer: Buffer): Promise<string> {
+  return performOCR(buffer);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VALIDATION
+// ═══════════════════════════════════════════════════════════════════════════════
 
 const CONTRACT_KEYWORDS = [
   // Venue/property
-  "hotel",
-  "resort",
-  "palace",
-  "inn",
-  "lodge",
-  "retreat",
-  "accommodation",
-  "property",
+  "hotel", "resort", "palace", "inn", "lodge", "retreat", "accommodation", "property",
   // Booking terms
-  "room",
-  "rate",
-  "tariff",
-  "per night",
-  "check-in",
-  "check-out",
-  "checkout",
-  "checkin",
-  "booking",
-  "reservation",
-  "occupancy",
-  "block",
-  "allocation",
-  "inventory",
+  "room", "rate", "tariff", "per night", "check-in", "check-out", "checkout", "checkin",
+  "booking", "reservation", "occupancy", "block", "allocation", "inventory",
   // Financial
-  "price",
-  "cost",
-  "total",
-  "payment",
-  "deposit",
-  "advance",
-  "invoice",
-  "gst",
-  "tax",
+  "price", "cost", "total", "payment", "deposit", "advance", "invoice", "gst", "tax",
+  "amount", "charge", "fee", "billing", "receipt",
   // Room types
-  "deluxe",
-  "suite",
-  "standard",
-  "premium",
-  "executive",
-  "royal",
-  "presidential",
-  "superior",
-  "villa",
-  "cottage",
-  "twin",
-  "double",
-  "single",
+  "deluxe", "suite", "standard", "premium", "executive", "royal", "presidential",
+  "superior", "villa", "cottage", "twin", "double", "single",
   // Services
-  "guest",
-  "night",
-  "stay",
-  "arrival",
-  "departure",
-  "amenities",
-  "breakfast",
-  "transfer",
-  "spa",
-  "wifi",
-  "laundry",
+  "guest", "night", "stay", "arrival", "departure", "amenities", "breakfast",
+  "transfer", "spa", "wifi", "laundry", "catering", "banquet",
   // Event
-  "conference",
-  "banquet",
-  "ballroom",
-  "venue",
-  "event",
-  "wedding",
-  "mice",
-  "group",
+  "conference", "ballroom", "venue", "event", "wedding", "mice", "group",
+  "corporate", "gala", "function",
   // Contract language
-  "agreement",
-  "contract",
-  "terms",
-  "conditions",
-  "policy",
-  "clause",
+  "agreement", "contract", "terms", "conditions", "policy", "clause",
+  "authorized", "signature", "signed", "client",
   // Attrition
-  "attrition",
-  "cancellation",
-  "penalty",
-  "release",
-  "deadline",
-  "complimentary",
-  "included",
-  "inclusions",
+  "attrition", "cancellation", "penalty", "release", "deadline",
+  "complimentary", "included", "inclusions",
 ];
 
 const INVITE_KEYWORDS = [
-  "wedding",
-  "ceremony",
-  "celebration",
-  "invite",
-  "invitation",
-  "cordially",
-  "pleasure",
-  "honour",
-  "honor",
-  "request",
-  "presence",
-  "reception",
-  "rsvp",
-  "marriage",
-  "engagement",
-  "anniversary",
-  "conference",
-  "summit",
-  "seminar",
-  "workshop",
-  "launch",
-  "gala",
-  "dinner",
-  "cocktail",
-  "event",
-  "offsite",
-  "retreat",
-  "meetup",
-  "reunion",
-  "party",
-  "festival",
-  "concert",
-  "date",
-  "venue",
-  "time",
-  "join",
-  "attend",
-  "save the date",
-  "together",
-  "family",
-  "friends",
-  "guest",
+  "wedding", "ceremony", "celebration", "invite", "invitation",
+  "cordially", "pleasure", "honour", "honor", "request", "presence",
+  "reception", "rsvp", "marriage", "engagement", "anniversary",
+  "conference", "summit", "seminar", "workshop", "launch", "gala",
+  "dinner", "cocktail", "event", "offsite", "retreat", "meetup",
+  "reunion", "party", "festival", "concert", "date", "venue", "time",
+  "join", "attend", "save the date", "together", "family", "friends", "guest",
 ];
 
 export interface ValidationResult {
@@ -162,13 +234,13 @@ export interface ValidationResult {
 }
 
 export function validateContractText(text: string): ValidationResult {
-  if (!text || text.trim().length < 30) {
+  if (!text || text.trim().length < 20) {
     return {
       isValid: false,
       confidence: 0,
       matchedKeywords: [],
       error:
-        "Could not extract readable text from this file. If this is a scanned document or image, please upload a text-based PDF instead.",
+        "Could not extract readable text from this file. The file may be corrupted, password-protected, or contain only scanned images with no recognizable text.",
     };
   }
 
@@ -176,7 +248,7 @@ export function validateContractText(text: string): ValidationResult {
   const matched = CONTRACT_KEYWORDS.filter((kw) => lower.includes(kw));
   const confidence = matched.length / CONTRACT_KEYWORDS.length;
 
-  if (matched.length < 4) {
+  if (matched.length < 2) {
     return {
       isValid: false,
       confidence,
@@ -197,8 +269,7 @@ export function validateInviteText(text: string): ValidationResult {
       isValid: false,
       confidence: 0,
       matchedKeywords: [],
-      error:
-        "Could not extract readable text from this file.",
+      error: "Could not extract readable text from this file.",
     };
   }
 
@@ -219,119 +290,572 @@ export function validateInviteText(text: string): ValidationResult {
   return { isValid: true, confidence, matchedKeywords: matched };
 }
 
-// ─── Contract Data Extraction (Regex-based) ───────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// LABELED FIELD EXTRACTION
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Extract a venue/hotel name from text.
- * Looks for patterns like "Hotel Grand Hyatt", "The Taj Palace", etc.
+ * Extract key:value pairs from structured text.
+ * Handles formats like:
+ *   "Hotel Name: Grand Horizon Hotel"
+ *   "Hotel Name:\n Grand Horizon Hotel"
+ *   "Address: 123 Ocean Drive, Mumbai, India"
+ *
+ * Returns a map of lowercase field names to their values.
  */
-function extractVenue(text: string): string {
-  // Look for full property name patterns like "Grand Hyatt Resort & Spa" or "Taj Lake Palace"
-  // Use [^\S\n]+ instead of \s+ to avoid matching across newlines
-  const fullNamePatterns = [
-    // "Grand Hyatt Resort\n& Spa" — allow ONE line break before "&"
-    /(?:The[^\S\n]+)?([A-Z][A-Za-z]+(?:[^\S\n]+(?:[A-Z&][A-Za-z]*|the|of|de|le|la)){1,8}(?:[^\S\n]*(?:Hotel|Resort|Palace|Inn|Lodge|Retreat|Spa|Suites|Mansion|Manor))(?:\s*&\s*[A-Za-z]+)?)/g,
-    /(?:property|venue|hotel)\s*[:–—-]\s*([^\n]{5,80})/gi,
-  ];
+function extractLabeledFields(text: string): Record<string, string> {
+  const fields: Record<string, string> = {};
 
-  const candidates: string[] = [];
-  for (const pattern of fullNamePatterns) {
-    let match;
-    while ((match = pattern.exec(text)) !== null) {
-      const name = match[1].trim().replace(/[,.]$/, "");
-      // Skip if it looks like a file path or URL
-      if (name.includes("/") || name.includes("\\") || name.includes("http")) continue;
-      if (name.length < 5) continue;
-      const cleaned = name.replace(/\s*\n\s*/g, ' ').trim();
-      if (cleaned.length < 5) continue;
-      candidates.push(cleaned);
+  // Known header labels that appear WITHOUT a colon (common in HTML-to-PDF)
+  const knownHeaderPattern =
+    /^(?:event\s*name|event\s*type|check[\s-]*in\s*date|check[\s-]*out\s*date|arrival\s*date|departure\s*date|hotel\s*name|property\s*name|venue\s*name|venue|address|location|city|expected\s*guests?|client\s*name|company\s*name|duration|contract\s*(?:no|number)|date\s*of\s*issue|valid\s*until|coordinating\s*agent|phone|email|contact|description)$/i;
+
+  // Normalize known header keys to standard names the downstream functions expect
+  const normalizeHeaderKey = (key: string): string => {
+    const k = key.toLowerCase().replace(/\s+/g, " ").trim();
+    // "check-in date" / "check in date" → "check-in"
+    if (/^check[\s-]*in\s*date$/.test(k)) return "check-in";
+    if (/^check[\s-]*out\s*date$/.test(k)) return "check-out";
+    if (/^arrival\s*date$/.test(k)) return "arrival";
+    if (/^departure\s*date$/.test(k)) return "departure";
+    return k;
+  };
+
+  // Process line-by-line to avoid cross-line matching issues
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    // Pattern 1: Match "Key: Value" — key is letters/spaces, colon, then value
+    const match = line.match(/^([A-Za-z][A-Za-z\s/&()\-]{0,40}?)\s*[:–—]\s*(.+)$/);
+    if (match) {
+      const key = match[1].trim().toLowerCase();
+      const value = match[2].trim();
+      if (key.length >= 2 && value.length >= 1 && value.length <= 200) {
+        if (!fields[key]) {
+          fields[key] = value;
+        }
+      }
+    } else {
+      // Pattern 2: Match "Key:" on this line, value on next line
+      const keyOnly = line.match(/^([A-Za-z][A-Za-z\s/&()\-]{0,40}?)\s*[:–—]\s*$/);
+      if (keyOnly && i + 1 < lines.length) {
+        const nextLine = lines[i + 1].trim();
+        if (nextLine.length >= 1 && nextLine.length <= 200) {
+          const key = keyOnly[1].trim().toLowerCase();
+          if (key.length >= 2 && !fields[key]) {
+            fields[key] = nextLine;
+          }
+        }
+      }
     }
   }
 
-  // Return the longest candidate (most complete name)
-  if (candidates.length > 0) {
-    return candidates.sort((a, b) => b.length - a.length)[0].substring(0, 100);
+  // Pattern 3: Known headers WITHOUT colons ("EVENT NAME\nValue", "CHECK-IN DATE\nValue")
+  // Common in HTML-to-PDF contracts and styled documents
+  for (let i = 0; i < lines.length - 1; i++) {
+    const line = lines[i].trim();
+    if (knownHeaderPattern.test(line)) {
+      const key = normalizeHeaderKey(line);
+      if (!fields[key]) {
+        const value = lines[i + 1].trim();
+        // Value must exist, be reasonable length, and not itself be a known header
+        if (
+          value.length >= 1 &&
+          value.length <= 200 &&
+          !knownHeaderPattern.test(value)
+        ) {
+          fields[key] = value;
+        }
+      }
+    }
   }
 
-  return "";
+  return fields;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TABLE PARSING ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface TableRow {
+  description: string;
+  numbers: number[];
+  rawLine: string;
+}
+
+/**
+ * Parse tabular data from text.
+ * Detects table sections by header keywords and extracts rows with
+ * description + numbers. Handles space-separated, pipe-separated,
+ * and tab-separated columns.
+ *
+ * Returns parsed rows with a description field and an array of numbers.
+ */
+function parseTableRows(text: string): TableRow[] {
+  const rows: TableRow[] = [];
+  const lines = text.split("\n");
+
+  // Find table header line indices — match lines containing column names
+  const headerPattern =
+    /(?:description|item|particular|service|room\s*type|category|accommodation)\s+.*?(?:qty|quantity|rate|amount|total|price|charge|cost|number|count|no\.?\s*of)/i;
+
+  // Alternative: a line with 2+ of these keywords
+  const altHeaderWords = ["description", "quantity", "rate", "amount", "total", "price", "charge", "qty", "unit"];
+
+  let inTable = false;
+  let blankLineCount = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    // Detect start of table
+    if (!inTable) {
+      // Primary header detection
+      if (headerPattern.test(line)) {
+        inTable = true;
+        blankLineCount = 0;
+        continue;
+      }
+      // Alternative: line contains 2+ header words
+      const lowerLine = line.toLowerCase();
+      const headerWordCount = altHeaderWords.filter((w) => lowerLine.includes(w)).length;
+      if (headerWordCount >= 2) {
+        inTable = true;
+        blankLineCount = 0;
+        continue;
+      }
+      continue;
+    }
+
+    // Detect end of table
+    if (line.length === 0) {
+      blankLineCount++;
+      if (blankLineCount >= 2) {
+        inTable = false;
+      }
+      continue;
+    }
+    blankLineCount = 0;
+
+    // Stop if we hit a new section header or non-table content
+    if (
+      /^(?:terms|conditions|notes|signatures?|authorized|disclaimer|important|policy|clause|payment\s*terms)/i.test(
+        line
+      )
+    ) {
+      inTable = false;
+      continue;
+    }
+
+    // Stop table at percentage-based statements (these are terms, not table data)
+    // e.g. "50% advance payment required", "Cancellation within 30 days..."
+    if (/^\d+\s*%\s*(?:advance|deposit|payment|cancellation|penalty|charge|fee)/i.test(line)) {
+      inTable = false;
+      continue;
+    }
+    if (/^(?:cancellation|cancel|no[- ]?show|force\s*majeure)/i.test(line)) {
+      inTable = false;
+      continue;
+    }
+
+    // Skip divider lines (----, ====, etc.)
+    if (/^[-=_|+\s•]{3,}$/.test(line)) continue;
+
+    // Try to parse this line as a table row
+    // Extract all number tokens from the line (numbers with optional commas and decimals)
+    const numberTokens = [...line.matchAll(/(?<!\S)([\d,]+(?:\.\d{1,2})?)(?!\S|[A-Za-z])/g)];
+
+    // Also try extracting numbers that are separated by at least one space from text
+    // This handles "Deluxe Rooms 20 5,000 100,000"
+    if (numberTokens.length === 0) continue;
+
+    // Find where the first number starts
+    const firstNumIdx = numberTokens[0].index!;
+    let description = line.substring(0, firstNumIdx).trim();
+
+    // Clean up description (remove trailing pipes, dashes, etc.)
+    description = description.replace(/[|│┃\-–—]+$/, "").trim();
+
+    // Skip rows with no meaningful description text
+    if (description.length < 2) continue;
+
+    // Filter out numbers that are part of the description (e.g., phone numbers, year references)
+    const numbers = numberTokens
+      .map((m) => parseFloat(m[1].replace(/,/g, "")))
+      .filter((n) => n > 0);
+
+    // Stop table at "Total Amount" rows — everything after is terms/conditions
+    const isTotal = /^(?:total|sub\s*total|grand\s*total|net\s*total|gross\s*total)/i.test(
+      description
+    );
+
+    if (isTotal) {
+      inTable = false;
+      continue;
+    }
+
+    // Only include rows with 2+ numbers (qty + rate at minimum) as real table data
+    // Single-number rows in a table context are likely noise
+    if (numbers.length >= 2) {
+      rows.push({ description, numbers, rawLine: line });
+    }
+  }
+
+  // ── Fallback: scan for ANY lines with format "Text Number Number Number" ──
+  // Even without a header, extract lines that look like table rows
+  if (rows.length === 0) {
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.length < 5) continue;
+
+      // Match lines that start with text and end with 2+ numbers
+      const tableRowMatch = trimmed.match(
+        /^([A-Za-z][A-Za-z\s/&()\-]{2,60}?)\s+([\d,]+(?:\.\d{1,2})?)\s+([\d,]+(?:\.\d{1,2})?)\s+([\d,]+(?:\.\d{1,2})?)\s*$/
+      );
+      if (tableRowMatch) {
+        const desc = tableRowMatch[1].trim();
+        const nums = [
+          parseFloat(tableRowMatch[2].replace(/,/g, "")),
+          parseFloat(tableRowMatch[3].replace(/,/g, "")),
+          parseFloat(tableRowMatch[4].replace(/,/g, "")),
+        ];
+        if (!(/^(?:total|sub\s*total|grand\s*total)$/i.test(desc))) {
+          rows.push({ description: desc, numbers: nums, rawLine: trimmed });
+        }
+      }
+
+      // Also match "Text Number Number" (2 numbers)
+      if (rows.length === 0) {
+        const twoNumMatch = trimmed.match(
+          /^([A-Za-z][A-Za-z\s/&()\-]{2,60}?)\s+([\d,]+(?:\.\d{1,2})?)\s+([\d,]+(?:\.\d{1,2})?)\s*$/
+        );
+        if (twoNumMatch) {
+          const desc = twoNumMatch[1].trim();
+          const nums = [
+            parseFloat(twoNumMatch[2].replace(/,/g, "")),
+            parseFloat(twoNumMatch[3].replace(/,/g, "")),
+          ];
+          if (!(/^(?:total|sub\s*total|grand\s*total)$/i.test(desc))) {
+            rows.push({ description: desc, numbers: nums, rawLine: trimmed });
+          }
+        }
+      }
+    }
+  }
+
+  return rows;
+}
+
+/**
+ * Interpret a table row's numbers based on expected column structure.
+ * For hotel contracts, common column orders are:
+ *   [qty, rate, total] or [rate, qty, total] or [qty, rate] or [rate, total]
+ *
+ * Heuristic: The largest number is likely the total (qty * rate).
+ * A small number (<500) is likely the quantity.
+ */
+function interpretTableRow(numbers: number[]): { rate: number; quantity: number } {
+  if (numbers.length === 0) return { rate: 0, quantity: 1 };
+
+  if (numbers.length === 1) {
+    // Single number: could be rate or total
+    return { rate: numbers[0], quantity: 1 };
+  }
+
+  if (numbers.length === 2) {
+    // Two numbers: [qty, rate] or [rate, total]
+    const [a, b] = numbers;
+    if (a < 500 && b >= 500) {
+      return { rate: b, quantity: a };
+    }
+    if (b < 500 && a >= 500) {
+      return { rate: a, quantity: b };
+    }
+    // Both large — first is rate, second is total
+    return { rate: a, quantity: 1 };
+  }
+
+  // 3+ numbers: typically [qty, rate, total]
+  // Find likely quantity (smallest number, typically < 500)
+  // Find likely total (largest number)
+  // Rate = total / quantity, or the column between qty and total
+
+  const sorted = [...numbers].sort((a, b) => a - b);
+  const smallest = sorted[0];
+  const largest = sorted[sorted.length - 1];
+
+  // If smallest is < 500, it's likely the quantity
+  if (smallest < 500 && smallest > 0) {
+    // Rate is the number that when multiplied by qty ≈ total
+    const expectedRate = largest / smallest;
+    // Find the number closest to expectedRate
+    const rateCandidate = numbers.find(
+      (n) =>
+        n !== smallest &&
+        n !== largest &&
+        Math.abs(n - expectedRate) / Math.max(expectedRate, 1) < 0.15
+    );
+    if (rateCandidate) {
+      return { rate: rateCandidate, quantity: smallest };
+    }
+    // Otherwise, the middle number is the rate
+    const middleNumbers = numbers.filter(
+      (n) => n !== smallest && n !== largest
+    );
+    if (middleNumbers.length > 0) {
+      return { rate: middleNumbers[0], quantity: smallest };
+    }
+    return { rate: largest, quantity: smallest };
+  }
+
+  // All numbers are large — first is likely rate
+  return { rate: numbers[0], quantity: 1 };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONTRACT DATA EXTRACTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Extract a venue/hotel name from text.
+ * Multi-strategy: labeled fields → contract preamble → pattern matching → proximity search.
+ */
+function extractVenue(
+  text: string,
+  fields: Record<string, string>
+): string {
+  const candidates: string[] = [];
+
+  // Strategy 1: Labeled fields (highest confidence)
+  const venueFieldKeys = [
+    "hotel name", "property name", "venue name", "hotel", "property", "venue",
+    "name of hotel", "name of the hotel", "name of property", "name of venue",
+    "hotel/resort name", "resort name",
+  ];
+  for (const key of venueFieldKeys) {
+    if (fields[key] && fields[key].length >= 3) {
+      candidates.push(fields[key]);
+    }
+  }
+
+  // Strategy 1b: Extend labeled-field venue names with next-line hotel suffixes.
+  // Handles multi-line venue names like:
+  //   "The Grand Hyatt"    (labeled field value)
+  //   "Resort & Spa"       (continuation on next line)
+  // → "The Grand Hyatt Resort & Spa"
+  const hotelSuffixPattern =
+    /(?:Hotel|Resort|Palace|Inn|Lodge|Retreat|Spa|Suites|Mansion|Manor|Club|Tower|Centre|Center|Plaza|Residency|Regency|Continental|International)(?:\s*&\s*[A-Za-z]+)?$/i;
+  for (let i = 0; i < candidates.length; i++) {
+    const name = candidates[i];
+    if (hotelSuffixPattern.test(name)) continue; // already ends with hotel word
+    const idx = text.indexOf(name);
+    if (idx !== -1) {
+      const afterName = text.substring(idx + name.length, idx + name.length + 100);
+      const nextLineMatch = afterName.match(/^\s*\n\s*([^\n]{3,60})/);
+      if (nextLineMatch) {
+        const nextLine = nextLineMatch[1].trim();
+        if (hotelSuffixPattern.test(nextLine)) {
+          candidates[i] = `${name} ${nextLine}`.trim();
+        }
+      }
+    }
+  }
+
+  // Strategy 2: Regex on labeled text patterns (in case extractLabeledFields missed some)
+  const labelPatterns = [
+    /(?:property\s*name|hotel\s*name|venue\s*name|name\s*of\s*(?:the\s*)?(?:hotel|property|venue))\s*[:–—-]\s*\n?\s*([^\n]{3,80})/gi,
+    /(?:property|venue)\s*[:–—-]\s*\n?\s*([^\n]{3,80})/gi,
+  ];
+  for (const pattern of labelPatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const name = match[1].trim().replace(/[,.]$/, "");
+      if (name.length >= 3 && !name.includes("http")) candidates.push(name);
+    }
+  }
+
+  // Strategy 3: "Between [Party A] and [Hotel Name]" — common contract opening
+  const betweenMatch = text.match(
+    /between\s+.{3,80}?\s+and\s+([A-Z][A-Za-z\s&']+?(?:Hotel|Resort|Palace|Inn|Lodge|Retreat|Spa|Suites|Mansion|Manor|Club|Tower|Centre|Center|Plaza|Residency|Regency|Continental|International)(?:\s*&\s*[A-Za-z]+)?)/i
+  );
+  if (betweenMatch?.[1]) {
+    candidates.push(betweenMatch[1].trim());
+  }
+
+  // Strategy 4: Full property name patterns — capitalized words ending with hotel-type word
+  const fullNamePatterns = [
+    /(?:The[^\S\n]+)?([A-Z][A-Za-z']+(?:[^\S\n]+(?:[A-Z&][A-Za-z']*|the|of|de|le|la|at|by)){0,8}[^\S\n]+(?:Hotel|Resort|Palace|Inn|Lodge|Retreat|Spa|Suites|Mansion|Manor|Club|Tower|Centre|Center|Plaza|Residency|Regency|Continental|International)(?:\s*&\s*[A-Za-z]+)?)/g,
+    // Branded chains
+    /(?:The\s+)?((?:Taj|Oberoi|ITC|Marriott|Hilton|Hyatt|Radisson|Sheraton|Westin|JW|Ritz|Four\s*Seasons|Le\s*Meridien|Novotel|Accor|Crowne\s*Plaza|Holiday\s*Inn|Best\s*Western|Fairmont|Leela|Lalit|Trident|Vivanta|Park\s*Hyatt|Grand\s*Hyatt|Sofitel|Pullman|Mandarin|Peninsula|Shangri|Kempinski|St\.?\s*Regis)\s*[A-Za-z\s&']{0,60})/gi,
+  ];
+  for (const pattern of fullNamePatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      let name = match[1]
+        .trim()
+        .replace(/[,.]$/, "")
+        .replace(/\s*\n\s*/g, " ")
+        .trim();
+      // Trim branded chain captures at common non-name words to prevent
+      // "Taj Lake Palace rooms are subject to..." → "Taj Lake Palace"
+      name = name
+        .replace(
+          /\s+(?:rooms?|is|are|was|were|has|have|had|will|would|shall|should|may|can|could|must|also|subject|under|provides?|offers?|includes?|features?|situated|located|near|with|from|this|that|which|where|when|being|been|for\s+(?:the|a)|at\s+(?:the|a)|of\s+(?:the|a))\b.*/i,
+          ""
+        )
+        .trim();
+      if (
+        name.length >= 3 &&
+        !name.includes("/") &&
+        !name.includes("\\") &&
+        !name.includes("http")
+      ) {
+        candidates.push(name);
+      }
+    }
+  }
+
+  // Strategy 5: Capitalized multi-word phrase near "hotel", "resort", etc.
+  const hotelWords = [
+    "hotel", "resort", "palace", "inn", "lodge", "retreat", "spa",
+  ];
+  const lower = text.toLowerCase();
+  for (const hw of hotelWords) {
+    let searchFrom = 0;
+    let idx: number;
+    while ((idx = lower.indexOf(hw, searchFrom)) !== -1) {
+      searchFrom = idx + hw.length;
+      const start = Math.max(0, idx - 80);
+      const end = Math.min(text.length, idx + hw.length + 80);
+      const window = text.substring(start, end);
+      const capPhrase = window.match(
+        /([A-Z][A-Za-z']+(?:[^\S\n]+(?:[A-Z&][A-Za-z']*|the|of|de|le|by|at)){1,6})/
+      );
+      if (capPhrase && capPhrase[1].length >= 5) {
+        // Strip leading label words that get captured from PDF text
+        const cleaned = capPhrase[1].trim()
+          .replace(/^(?:VENUE|HOTEL|PROPERTY|RESORT|ADDRESS|LOCATION|NAME|EVENT|DATE|TYPE|CATEGORY)\s+/i, "")
+          .trim();
+        if (cleaned.length >= 5) candidates.push(cleaned);
+      }
+    }
+  }
+
+  if (candidates.length === 0) return "";
+
+  // Deduplicate and rank candidates
+  const unique = [...new Set(candidates.map((c) => c.replace(/\s+/g, " ")))];
+
+  // Score each candidate: prefer names with hotel-type suffixes, moderate length,
+  // and penalize very long generic captures
+  const hotelSuffixes = /(?:Hotel|Resort|Palace|Inn|Lodge|Retreat|Spa|Suites|Mansion|Manor|Club|Tower|Centre|Center|Plaza|Residency|Regency)$/i;
+  const scored = unique.map((name) => {
+    let score = 0;
+    // Ends with a hotel-type word → highest priority
+    if (hotelSuffixes.test(name)) score += 50;
+    // Contains a branded chain name → boost
+    if (/Taj|Oberoi|ITC|Marriott|Hilton|Hyatt|Radisson|Sheraton|Westin|JW|Ritz|Four\s*Seasons|Le\s*Meridien|Leela|Lalit|Trident|Vivanta|Sofitel|Pullman|Kempinski|St\.?\s*Regis/i.test(name)) score += 30;
+    // Reasonable length (10-60 chars) → good name
+    if (name.length >= 10 && name.length <= 60) score += 20;
+    // Very short (<10) → might be incomplete
+    if (name.length < 10) score += 5;
+    // Very long (>60) → likely over-captured
+    if (name.length > 60) score -= 10;
+    // From labeled fields (appears first in candidates) → boost
+    if (candidates.indexOf(name) < 3) score += 10;
+    return { name, score };
+  });
+  scored.sort((a, b) => b.score - a.score || b.name.length - a.name.length);
+  return scored[0].name.substring(0, 100);
 }
 
 /**
  * Extract location / city from text.
+ * Uses labeled fields, address patterns, "in/at City", and known city names.
  */
-function extractLocation(text: string): string {
-  const labelPatterns = [
-    /(?:location|city|address|place)\s*[:–—-]\s*(.+)/i,
-    /(?:in|at)\s+([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)?(?:,\s*[A-Z][a-z]+)?)/,
-  ];
+function extractLocation(
+  text: string,
+  fields: Record<string, string>
+): string {
+  /** Clean a raw location string: strip email addresses, URLs, and trailing OCR noise fragments */
+  const cleanLocation = (raw: string): string => {
+    return raw
+      // Remove email addresses
+      .replace(/\s*\S+@\S+\.\S+/g, "")
+      // Remove URLs
+      .replace(/\s*https?:\/\/\S+/gi, "")
+      // Remove "Email:" / "Phone:" / "Contact:" labels and everything after
+      .replace(/\s*(?:email|phone|tel|fax|contact|website|web)\s*[:]\s*.*/gi, "")
+      // Remove trailing short OCR noise fragments (1-2 char junk at end)
+      .replace(/\s+[a-zA-Z]{1,2}$/, "")
+      .trim()
+      .substring(0, 120);
+  };
 
-  for (const pattern of labelPatterns) {
-    const match = text.match(pattern);
-    if (match?.[1]) {
-      return match[1].trim().replace(/[.]$/, "").substring(0, 80);
+  // Strategy 1: Labeled fields
+  const locationFieldKeys = [
+    "address", "location", "city", "place", "situated at", "located at",
+  ];
+  for (const key of locationFieldKeys) {
+    if (fields[key] && fields[key].length >= 3) {
+      return cleanLocation(fields[key]);
     }
   }
 
-  // Indian cities
+  // Strategy 2: Regex on labeled text
+  const labelPatterns = [
+    /(?:address|location|city|place|situated\s*(?:at|in)|located\s*(?:at|in))\s*[:–—-]\s*\n?\s*([^\n]{5,120})/i,
+  ];
+  for (const pattern of labelPatterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      return cleanLocation(match[1].trim().replace(/[.]$/, ""));
+    }
+  }
+
+  // Strategy 3: "in [City]" or "at [City]" patterns
+  const inAtMatch = text.match(
+    /(?:\bin\b|\bat\b)\s+([A-Z][a-z]+(?:,\s*[A-Z][A-Za-z\s]+)?)/
+  );
+  if (inAtMatch?.[1] && inAtMatch[1].length > 2) {
+    const loc = inAtMatch[1].trim().replace(/[.]$/, "");
+    if (
+      !/^(The|This|That|Which|Order|Any|Our|All|Its|Each|Some)$/i.test(loc)
+    ) {
+      return loc.substring(0, 80);
+    }
+  }
+
+  // Strategy 4: Known cities & regions
   const cities = [
-    "Mumbai",
-    "Delhi",
-    "Bengaluru",
-    "Bangalore",
-    "Chennai",
-    "Hyderabad",
-    "Kolkata",
-    "Pune",
-    "Jaipur",
-    "Udaipur",
-    "Goa",
-    "Shimla",
-    "Agra",
-    "Lucknow",
-    "Ahmedabad",
-    "Kochi",
-    "Thiruvananthapuram",
-    "Chandigarh",
-    "Manali",
-    "Rishikesh",
-    "Varanasi",
-    "Jodhpur",
-    "Mussoorie",
-    "Darjeeling",
-    "Ooty",
-    "Coorg",
-    "Munnar",
-    "Amritsar",
-    "Bhopal",
-    "Indore",
-    "Nagpur",
-    "Surat",
-    "Rajasthan",
-    "Kerala",
-    "Gujarat",
-    "Maharashtra",
-    "Karnataka",
+    "Mumbai", "Delhi", "New Delhi", "Bengaluru", "Bangalore", "Chennai",
+    "Hyderabad", "Kolkata", "Pune", "Jaipur", "Udaipur", "Goa",
+    "Shimla", "Agra", "Lucknow", "Ahmedabad", "Kochi", "Thiruvananthapuram",
+    "Chandigarh", "Manali", "Rishikesh", "Varanasi", "Jodhpur", "Mussoorie",
+    "Darjeeling", "Ooty", "Coorg", "Munnar", "Amritsar", "Bhopal",
+    "Indore", "Nagpur", "Surat", "Navi Mumbai", "Gurugram", "Gurgaon",
+    "Noida", "Dehradun", "Gangtok", "Leh", "Ladakh", "Kodaikanal",
+    "Lonavala", "Mahabaleshwar", "Mount Abu", "Pushkar", "Ranthambore",
+    "Jim Corbett", "Andaman", "Kovalam", "Varkala", "Alleppey", "Wayanad",
+    "Rajasthan", "Kerala", "Gujarat", "Maharashtra", "Karnataka",
     "Tamil Nadu",
-    "Dubai",
-    "Singapore",
-    "Bangkok",
-    "London",
-    "New York",
-    "Paris",
-    "Bali",
-    "Maldives",
-    "Sri Lanka",
-    "Mauritius",
-    "Thailand",
+    "Dubai", "Abu Dhabi", "Singapore", "Bangkok", "Pattaya", "Phuket",
+    "London", "New York", "Paris", "Bali", "Maldives", "Sri Lanka",
+    "Mauritius", "Thailand", "Tokyo", "Hong Kong", "Sydney", "Melbourne",
+    "Toronto", "Vancouver", "Los Angeles", "San Francisco", "Las Vegas",
+    "Miami", "Barcelona", "Rome", "Venice", "Amsterdam", "Prague",
+    "Istanbul", "Cairo", "Doha", "Muscat", "Colombo", "Kathmandu",
+    "Kuala Lumpur", "Jakarta", "Ho Chi Minh", "Hanoi", "Seoul",
   ];
 
   for (const city of cities) {
     const idx = text.indexOf(city);
     if (idx !== -1) {
-      // Try to get state/country after it
-      const after = text.substring(idx, idx + 50);
+      const after = text.substring(idx, idx + 80);
       const withState = after.match(
-        new RegExp(`(${city}(?:,\\s*[A-Za-z\\s]+)?)`)
+        new RegExp(
+          `(${city.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:,\\s*[A-Za-z\\s]+)?)`
+        )
       );
       if (withState?.[1]) {
         return withState[1]
@@ -346,8 +870,14 @@ function extractLocation(text: string): string {
   return "";
 }
 
-/** Extract dates from text. Returns [checkIn, checkOut] as YYYY-MM-DD strings. */
-function extractDates(text: string): [string, string] {
+/**
+ * Extract dates from text. Returns [checkIn, checkOut] as YYYY-MM-DD strings.
+ * Handles: labeled dates, date ranges, named dates, numeric dates, ISO dates.
+ */
+function extractDates(
+  text: string,
+  fields: Record<string, string>
+): [string, string] {
   const months: Record<string, string> = {
     january: "01", february: "02", march: "03", april: "04",
     may: "05", june: "06", july: "07", august: "08",
@@ -355,44 +885,139 @@ function extractDates(text: string): [string, string] {
     jan: "01", feb: "02", mar: "03", apr: "04",
     jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
   };
+  const monthNames = Object.keys(months).join("|");
 
+  // ─── Strategy 1: Labeled fields (highest confidence) ───
+  let checkIn = "";
+  let checkOut = "";
+
+  const checkInFieldKeys = [
+    "check-in", "checkin", "check in", "check-in date", "checkin date", "check in date",
+    "arrival", "arrival date", "start date",
+  ];
+  const checkOutFieldKeys = [
+    "check-out", "checkout", "check out", "check-out date", "checkout date", "check out date",
+    "departure", "departure date", "end date",
+  ];
+
+  for (const key of checkInFieldKeys) {
+    if (fields[key]) {
+      const parsed = parseDateFromString(fields[key], months);
+      if (parsed) {
+        checkIn = parsed;
+        break;
+      }
+    }
+  }
+  for (const key of checkOutFieldKeys) {
+    if (fields[key]) {
+      const parsed = parseDateFromString(fields[key], months);
+      if (parsed) {
+        checkOut = parsed;
+        break;
+      }
+    }
+  }
+
+  if (checkIn && checkOut) return [checkIn, checkOut];
+
+  // ─── Strategy 2: Regex labeled dates in raw text ───
+  // Handles: "Check-in: 14 August 2026", "Check-in:\n14 August 2026"
+  // Supports BOTH "DD Month YYYY" and "Month DD, YYYY" formats
+  const dateCapture = `(\\d{1,2}\\s+(?:${monthNames})\\s+\\d{4}|(?:${monthNames})\\s+\\d{1,2},?\\s+\\d{4}|\\d{1,2}[\\/-]\\d{1,2}[\\/-]\\d{4}|\\d{4}-\\d{2}-\\d{2})`;
+
+  if (!checkIn) {
+    const checkInRegex = new RegExp(
+      `(?:check[\\s-]*in|arrival|start)\\s*(?:date)?\\s*[:–—-]?\\s*\\n?\\s*${dateCapture}`,
+      "i"
+    );
+    const checkInMatch = text.match(checkInRegex);
+    if (checkInMatch) {
+      checkIn = normalizeDateString(checkInMatch[1].trim());
+    }
+  }
+
+  if (!checkOut) {
+    const checkOutRegex = new RegExp(
+      `(?:check[\\s-]*out|departure|end)\\s*(?:date)?\\s*[:–—-]?\\s*\\n?\\s*${dateCapture}`,
+      "i"
+    );
+    const checkOutMatch = text.match(checkOutRegex);
+    if (checkOutMatch) {
+      checkOut = normalizeDateString(checkOutMatch[1].trim());
+    }
+  }
+
+  if (checkIn && checkOut) return [checkIn, checkOut];
+
+  // ─── Strategy 3: Collect all dates from text ───
   const parsed: string[] = [];
-
-  // Pattern: April 10, 2026 / 10 April 2026 / Apr 10, 2026
-  const longDatePattern =
-    /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{4})/gi;
-  const longDatePattern2 =
-    /(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2}),?\s+(\d{4})/gi;
-
   let m;
+
+  // Date ranges: "10-13 April 2026" or "April 10-13, 2026"
+  const rangePattern1 = new RegExp(
+    `(\\d{1,2})\\s*[-–—to]+\\s*(\\d{1,2})\\s+(${monthNames})\\s+(\\d{4})`,
+    "gi"
+  );
+  const rangePattern2 = new RegExp(
+    `(${monthNames})\\s+(\\d{1,2})\\s*[-–—to]+\\s*(\\d{1,2}),?\\s*(\\d{4})`,
+    "gi"
+  );
+  while ((m = rangePattern1.exec(text)) !== null) {
+    const month = months[m[3].toLowerCase()];
+    if (month) {
+      parsed.push(`${m[4]}-${month}-${m[1].padStart(2, "0")}`);
+      parsed.push(`${m[4]}-${month}-${m[2].padStart(2, "0")}`);
+    }
+  }
+  while ((m = rangePattern2.exec(text)) !== null) {
+    const month = months[m[1].toLowerCase()];
+    if (month) {
+      parsed.push(`${m[4]}-${month}-${m[2].padStart(2, "0")}`);
+      parsed.push(`${m[4]}-${month}-${m[3].padStart(2, "0")}`);
+    }
+  }
+
+  // DD Month YYYY
+  const longDatePattern = new RegExp(
+    `(\\d{1,2})\\s+(${monthNames})\\s+(\\d{4})`,
+    "gi"
+  );
   while ((m = longDatePattern.exec(text)) !== null) {
     const day = m[1].padStart(2, "0");
     const month = months[m[2].toLowerCase()];
-    const year = m[3];
-    if (month) parsed.push(`${year}-${month}-${day}`);
+    if (month) parsed.push(`${m[3]}-${month}-${day}`);
   }
+
+  // Month DD, YYYY
+  const longDatePattern2 = new RegExp(
+    `(${monthNames})\\s+(\\d{1,2}),?\\s+(\\d{4})`,
+    "gi"
+  );
   while ((m = longDatePattern2.exec(text)) !== null) {
     const month = months[m[1].toLowerCase()];
     const day = m[2].padStart(2, "0");
-    const year = m[3];
-    if (month) parsed.push(`${year}-${month}-${day}`);
+    if (month) parsed.push(`${m[3]}-${month}-${day}`);
   }
 
-  // Pattern: DD/MM/YYYY or DD-MM-YYYY
+  // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
   const numericPattern = /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/g;
   while ((m = numericPattern.exec(text)) !== null) {
     const a = parseInt(m[1]);
     const b = parseInt(m[2]);
     const year = m[3];
-    // Heuristic: if first number > 12, it's DD/MM. Otherwise ambiguous, assume DD/MM (Indian format)
     if (a <= 31 && b <= 12) {
-      parsed.push(`${year}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`);
+      parsed.push(
+        `${year}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`
+      );
     } else if (b <= 31 && a <= 12) {
-      parsed.push(`${year}-${String(a).padStart(2, "0")}-${String(b).padStart(2, "0")}`);
+      parsed.push(
+        `${year}-${String(a).padStart(2, "0")}-${String(b).padStart(2, "0")}`
+      );
     }
   }
 
-  // Pattern: YYYY-MM-DD (ISO)
+  // YYYY-MM-DD (ISO)
   const isoPattern = /(\d{4})-(\d{2})-(\d{2})/g;
   while ((m = isoPattern.exec(text)) !== null) {
     const candidate = `${m[1]}-${m[2]}-${m[3]}`;
@@ -402,175 +1027,367 @@ function extractDates(text: string): [string, string] {
   // Deduplicate and sort
   const unique = [...new Set(parsed)].sort();
 
-  // Try to find dates specifically labeled as check-in / check-out
-  const lower = text.toLowerCase();
-  let checkIn = "";
-  let checkOut = "";
-
-  // Look for labeled dates: "CHECK-IN DATE\nApril 10, 2026"
-  const checkInMatch = lower.match(
-    /(?:check[\s-]*in|arrival|start)\s*(?:date)?\s*[:–—-]?\s*(?:\n\s*)?([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/-]\d{1,2}[\/-]\d{4}|\d{4}-\d{2}-\d{2})/i
-  );
-  if (checkInMatch) {
-    checkIn = normalizeDateString(checkInMatch[1].trim());
-  }
-
-  const checkOutMatch = lower.match(
-    /(?:check[\s-]*out|departure|end)\s*(?:date)?\s*[:–—-]?\s*(?:\n\s*)?([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/-]\d{1,2}[\/-]\d{4}|\d{4}-\d{2}-\d{2})/i
-  );
-  if (checkOutMatch) {
-    checkOut = normalizeDateString(checkOutMatch[1].trim());
-  }
-
-  if (checkIn && checkOut) return [checkIn, checkOut];
+  // Fill in any missing check-in/check-out from collected dates
   if (checkIn && !checkOut && unique.length > 0) {
-    // Use the latest date that's after checkIn as checkOut
-    const later = unique.filter(d => d > checkIn);
-    return [checkIn, later.length > 0 ? later[later.length - 1] : unique[unique.length - 1]];
+    const later = unique.filter((d) => d > checkIn);
+    checkOut =
+      later.length > 0 ? later[later.length - 1] : unique[unique.length - 1];
+    return [checkIn, checkOut];
   }
 
-  // Fallback: use first and last dates, but skip dates that look like issue/contract dates
-  // (usually the earliest date is the contract issue date, so prefer the 2nd and last)
-  if (unique.length >= 3) {
-    // Heuristic: skip earliest date(s) which are likely document metadata
-    return [unique[unique.length - 2], unique[unique.length - 1]];
-  } else if (unique.length >= 2) {
-    return [unique[0], unique[unique.length - 1]];
-  } else if (unique.length === 1) {
-    const d = new Date(unique[0]);
-    d.setDate(d.getDate() + 3);
-    return [unique[0], d.toISOString().split("T")[0]];
+  if (!checkIn && !checkOut) {
+    // Use event date labeled field as fallback for check-in
+    const eventDateKeys = ["event date", "date", "function date", "event"];
+    for (const key of eventDateKeys) {
+      if (fields[key]) {
+        const parsed2 = parseDateFromString(fields[key], months);
+        if (parsed2) {
+          checkIn = parsed2;
+          // Set checkout to day after
+          const d = new Date(parsed2);
+          d.setDate(d.getDate() + 1);
+          checkOut = d.toISOString().split("T")[0];
+          return [checkIn, checkOut];
+        }
+      }
+    }
+
+    // Fallback to collected dates
+    if (unique.length >= 3) {
+      return [unique[unique.length - 2], unique[unique.length - 1]];
+    } else if (unique.length >= 2) {
+      return [unique[0], unique[unique.length - 1]];
+    } else if (unique.length === 1) {
+      const d = new Date(unique[0]);
+      d.setDate(d.getDate() + 3);
+      return [unique[0], d.toISOString().split("T")[0]];
+    }
   }
 
-  return ["", ""];
+  return [checkIn || "", checkOut || ""];
 }
 
-/** Extract room types with rates and quantities from text. */
-function extractRooms(
-  text: string
-): ParsedContract["rooms"] {
-  const rooms: ParsedContract["rooms"] = [];
+/**
+ * Try to parse a date string in various formats. Returns YYYY-MM-DD or null.
+ */
+function parseDateFromString(
+  str: string,
+  months: Record<string, string>
+): string | null {
+  str = str.trim();
 
-  // Compound room type names only — no bare words like "Deluxe" or "Suite" that would cause duplicates
-  const roomTypeWords = [
-    "Deluxe Room",
-    "Standard Room",
-    "Premium Suite",
-    "Executive Suite",
-    "Royal Suite",
-    "Presidential Suite",
-    "Superior Room",
-    "Family Room",
-    "Family Suite",
-    "Luxury Suite",
-    "Luxury Room",
-    "Classic Room",
-    "Junior Suite",
-    "Grand Suite",
-    "Honeymoon Suite",
-    "Penthouse Suite",
-    "Penthouse",
-    "Villa",
-    "Cottage",
-    "Studio Room",
-    "Studio",
-    "Twin Room",
-    "Double Room",
-    "Single Room",
-    "King Room",
-    "Queen Room",
-    "Club Room",
-    "Garden Room",
-    "Pool Villa",
-    "Ocean Suite",
-    "Lake View Room",
-  ];
+  // ISO format: 2026-08-14
+  const iso = str.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return iso[0];
 
-  const lower = text.toLowerCase();
-
-  for (const roomType of roomTypeWords) {
-    const roomLower = roomType.toLowerCase();
-    const idx = lower.indexOf(roomLower);
-    if (idx === -1) continue;
-
-    // Already found this type? Skip
-    if (rooms.some((r) => r.roomType.toLowerCase() === roomLower)) continue;
-
-    // Get surrounding context (500 chars after the room type mention)
-    const context = text.substring(idx, idx + 500);
-
-    // Extract rate — look for ₹ or Rs or INR or $ followed by number
-    let rate = 0;
-    const rateMatch = context.match(/[₹$]\s*([\d,]+)/);
-    if (rateMatch) {
-      rate = parseInt(rateMatch[1].replace(/,/g, ""));
-    } else {
-      const rateMatch2 = context.match(
-        /(?:rs\.?|inr|usd|rate|tariff|price)\s*:?\s*([\d,]+)/i
-      );
-      if (rateMatch2) {
-        rate = parseInt(rateMatch2[1].replace(/,/g, ""));
-      }
-    }
-
-    // Extract quantity
-    let quantity = 0;
-    const qtyMatch = context.match(
-      /(?:qty|quantity|rooms?|units?|nos?\.?|count|block)\s*:?\s*(\d+)/i
-    );
-    if (qtyMatch) {
-      quantity = parseInt(qtyMatch[1]);
-    } else {
-      // Look for patterns like "30 rooms" or "x 15"
-      const qtyMatch2 = context.match(/(\d+)\s*(?:rooms?|units?|nos?)/i);
-      if (qtyMatch2) {
-        quantity = parseInt(qtyMatch2[1]);
-      }
-    }
-
-    // Extract floor
-    let floor = "";
-    const floorMatch = context.match(
-      /(?:floor|level)\s*:?\s*([A-Za-z0-9\-–]+)/i
-    );
-    if (floorMatch) floor = floorMatch[1];
-
-    // Extract wing
-    let wing = "";
-    const wingMatch = context.match(
-      /(?:wing|tower|block|building)\s*:?\s*([A-Za-z\s]+?)(?:\s*[,.\n|]|$)/i
-    );
-    if (wingMatch) wing = wingMatch[1].trim();
-
-    // Extract hotel name (for multi-property contracts)
-    let hotelName = "";
-    const hotelMatch = context.match(
-      /(?:at|hotel|property)\s*:?\s*([A-Z][A-Za-z\s&']+(?:Hotel|Resort|Palace|Spa|Suites)?)/
-    );
-    if (hotelMatch) hotelName = hotelMatch[1].trim();
-
-    rooms.push({
-      roomType,
-      rate: rate || 0,
-      quantity: quantity || 1,
-      floor: floor || undefined,
-      wing: wing || undefined,
-      hotelName: hotelName || undefined,
-    });
+  // DD Month YYYY: "14 August 2026"
+  const dmy = str.match(
+    /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{4})/i
+  );
+  if (dmy) {
+    const month = months[dmy[2].toLowerCase()];
+    if (month) return `${dmy[3]}-${month}-${dmy[1].padStart(2, "0")}`;
   }
 
-  // If no specific room types found, try generic row-based extraction
-  // Pattern: something | ₹XX,XXX | XX rooms
+  // Month DD, YYYY: "August 14, 2026"
+  const mdy = str.match(
+    /(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2}),?\s+(\d{4})/i
+  );
+  if (mdy) {
+    const month = months[mdy[1].toLowerCase()];
+    if (month) return `${mdy[3]}-${month}-${mdy[2].padStart(2, "0")}`;
+  }
+
+  // DD/MM/YYYY or DD-MM-YYYY
+  const numeric = str.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+  if (numeric) {
+    const a = parseInt(numeric[1]);
+    const b = parseInt(numeric[2]);
+    if (a <= 31 && b <= 12) {
+      return `${numeric[3]}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
+    }
+    if (b <= 31 && a <= 12) {
+      return `${numeric[3]}-${String(a).padStart(2, "0")}-${String(b).padStart(2, "0")}`;
+    }
+  }
+
+  return null;
+}
+
+/** Try to normalize various date string formats to YYYY-MM-DD */
+function normalizeDateString(dateStr: string): string {
+  const months: Record<string, string> = {
+    january: "01", february: "02", march: "03", april: "04",
+    may: "05", june: "06", july: "07", august: "08",
+    september: "09", october: "10", november: "11", december: "12",
+    jan: "01", feb: "02", mar: "03", apr: "04",
+    jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+  };
+
+  const result = parseDateFromString(dateStr, months);
+  return result || dateStr;
+}
+
+/**
+ * Extract room types with rates and quantities from text.
+ * Multi-strategy: table parsing → named room types → generic row extraction.
+ */
+function extractRooms(
+  text: string,
+  tableRows: TableRow[]
+): ParsedContract["rooms"] {
+  const rooms: ParsedContract["rooms"] = [];
+  const seen = new Set<string>();
+
+  // ── Strategy 1: Use parsed table rows ──
+  if (tableRows.length > 0) {
+    for (const row of tableRows) {
+      const desc = row.description;
+      // Check if this row looks like a room/accommodation item
+      const isRoom =
+        /room|suite|villa|cottage|studio|deluxe|standard|premium|executive|royal|superior|twin|double|single|king|queen|club|penthouse|accommodation/i.test(
+          desc
+        );
+
+      if (isRoom) {
+        const { rate, quantity } = interpretTableRow(row.numbers);
+        const key = desc.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          rooms.push({
+            roomType: desc,
+            rate: rate || 0,
+            quantity: quantity || 1,
+          });
+        }
+      }
+    }
+  }
+
+  // ── Strategy 2: Named room type pattern matching ──
   if (rooms.length === 0) {
-    const rowPattern =
-      /([A-Za-z][A-Za-z\s]+?)\s*(?:[|│┃,]|(?:[-–]\s*))\s*[₹$Rs.]?\s*([\d,]+)\s*(?:per\s*night|\/night|\/n)?\s*(?:[|│┃,]|(?:[-–]\s*))\s*(\d+)\s*(?:rooms?|units?|nos?)?/gi;
-    let rowMatch;
-    while ((rowMatch = rowPattern.exec(text)) !== null) {
-      const name = rowMatch[1].trim();
-      const rate = parseInt(rowMatch[2].replace(/,/g, ""));
-      const qty = parseInt(rowMatch[3]);
-      if (name.length > 2 && rate > 100 && qty > 0 && qty < 1000) {
-        rooms.push({ roomType: name, rate, quantity: qty });
+    const roomTypeWords = [
+      // Compound names
+      "Deluxe Room", "Deluxe Rooms", "Deluxe King", "Deluxe Twin",
+      "Deluxe Double", "Deluxe Single",
+      "Standard Room", "Standard Rooms", "Standard King", "Standard Twin",
+      "Standard Double",
+      "Premium Suite", "Premium Room", "Premium Rooms", "Premium King",
+      "Executive Suite", "Executive Room", "Executive Rooms", "Executive King",
+      "Royal Suite", "Royal Room",
+      "Presidential Suite", "Presidential Room",
+      "Superior Room", "Superior Rooms", "Superior King", "Superior Double",
+      "Family Room", "Family Rooms", "Family Suite",
+      "Luxury Suite", "Luxury Room", "Luxury Rooms",
+      "Classic Room", "Classic Rooms", "Classic Suite",
+      "Junior Suite",
+      "Grand Suite", "Grand Room",
+      "Honeymoon Suite",
+      "Penthouse Suite", "Penthouse",
+      "Villa", "Pool Villa", "Beach Villa", "Garden Villa",
+      "Cottage",
+      "Studio Room", "Studio Rooms", "Studio",
+      "Twin Room", "Twin Rooms", "Twin Sharing",
+      "Double Room", "Double Rooms", "Double Occupancy",
+      "Single Room", "Single Rooms", "Single Occupancy",
+      "King Room", "King Rooms", "King Bed",
+      "Queen Room", "Queen Rooms", "Queen Bed",
+      "Club Room", "Club Rooms", "Club Suite",
+      "Garden Room", "Garden View",
+      "Ocean Suite", "Ocean View", "Sea View",
+      "Lake View Room", "Lake View",
+      "Mountain View", "Valley View", "Pool View", "City View",
+      // Bare keywords (lower priority)
+      "Deluxe", "Suite", "Superior", "Executive", "Premier", "Premium",
+    ];
+
+    const lower = text.toLowerCase();
+
+    for (const roomType of roomTypeWords) {
+      const roomLower = roomType.toLowerCase();
+      const idx = lower.indexOf(roomLower);
+      if (idx === -1) continue;
+
+      const normalizedType = roomType.replace(/\s+/g, " ").trim();
+      if (seen.has(normalizedType.toLowerCase())) continue;
+      // If this is a bare keyword, check if there's a more specific match
+      if (roomType.split(" ").length === 1) {
+        const hasSpecific = [...seen].some((s) => s.includes(roomLower));
+        if (hasSpecific) continue;
+      }
+
+      // Get the LINE containing this room type for context
+      const lineStart = text.lastIndexOf("\n", idx);
+      const lineEnd = text.indexOf("\n", idx + roomLower.length);
+      const line = text.substring(
+        lineStart >= 0 ? lineStart + 1 : 0,
+        lineEnd >= 0 ? lineEnd : text.length
+      );
+
+      // Also get broader context for labeled patterns
+      const context = text.substring(
+        idx,
+        Math.min(text.length, idx + 800)
+      );
+      const beforeContext = text.substring(Math.max(0, idx - 200), idx);
+
+      // Extract rate — try line-level numbers first, then broader context
+      let rate = 0;
+      let quantity = 0;
+
+      // Try to extract numbers from the same line (table-like)
+      const lineNumbers = [
+        ...line.matchAll(/([\d,]+(?:\.\d{1,2})?)/g),
+      ]
+        .map((matchArr) => parseFloat(matchArr[1].replace(/,/g, "")))
+        .filter((n) => n > 0);
+
+      if (lineNumbers.length >= 2) {
+        // Table-like line: use interpretTableRow
+        const interpreted = interpretTableRow(lineNumbers);
+        rate = interpreted.rate;
+        quantity = interpreted.quantity;
+      } else {
+        // Fall back to labeled/symbol-based patterns in broader context
+        const ratePatterns = [
+          /[₹$]\s*([\d,]+(?:\.\d{1,2})?)/,
+          /(?:rs\.?|inr|usd|rate|tariff|price|rack\s*rate|published\s*rate|negotiated\s*rate|net\s*rate|per\s*night|per\s*room)\s*[:=]?\s*[₹$]?\s*([\d,]+(?:\.\d{1,2})?)/i,
+          /([\d,]{4,})\s*(?:\/\s*night|per\s*night|per\s*room|\/-)/i,
+        ];
+        for (const rp of ratePatterns) {
+          if (rate > 0) break;
+          const rateMatch = context.match(rp);
+          if (rateMatch) {
+            const val = parseInt(
+              (rateMatch[1] || rateMatch[2] || "0").replace(/,/g, "")
+            );
+            if (val > 100 && val < 10000000) rate = val;
+          }
+        }
+
+        // Extract quantity from NEARBY context only (300 chars)
+        // Using full 800-char context can pick up "50 rooms" from "Total Protected Inventory" summary text
+        const qtyContext = text.substring(idx, Math.min(text.length, idx + 300));
+        const qtyPatterns = [
+          /(?:qty|quantity)\s*[:=]?\s*(\d+)/i,
+          /(\d+)\s*(?:rooms?|units?|nos\.?|keys|pax)/i,
+          /(?:rooms?|units?|nos?\.?|count|block|blocked|allocated)\s*[:=]?\s*(\d+)/i,
+          /(?:x|×)\s*(\d+)/i,
+          /(\d+)\s*(?:x|×)/i,
+        ];
+        for (const qp of qtyPatterns) {
+          if (quantity > 0) break;
+          const qtyMatch = qtyContext.match(qp);
+          if (qtyMatch) {
+            const val = parseInt(qtyMatch[1]);
+            if (val > 0 && val < 10000) quantity = val;
+          }
+        }
+        // Check before context too
+        if (quantity === 0) {
+          const qtyBefore = beforeContext.match(
+            /(\d+)\s*(?:rooms?|units?|nos\.?|x|×)\s*$/i
+          );
+          if (qtyBefore) quantity = parseInt(qtyBefore[1]);
+        }
+      }
+
+      // Extract floor
+      let floor = "";
+      const floorMatch = context.match(
+        /(?:floor|level|storey)\s*[:=]?\s*([A-Za-z0-9\-–]+)/i
+      );
+      if (floorMatch) floor = floorMatch[1];
+
+      // Extract wing
+      let wing = "";
+      const wingMatch = context.match(
+        /(?:wing|tower|block|building)\s*[:=]?\s*([A-Za-z\s]+?)(?:\s*[,.\n|]|$)/i
+      );
+      if (wingMatch) wing = wingMatch[1].trim();
+
+      // Extract hotel name (for multi-property contracts)
+      let hotelName = "";
+      const hotelMatch = (beforeContext + context).match(
+        /(?:at|hotel|property)\s*[:=]?\s*([A-Z][A-Za-z\s&']+(?:Hotel|Resort|Palace|Spa|Suites)?)/
+      );
+      if (hotelMatch) hotelName = hotelMatch[1].trim();
+
+      seen.add(normalizedType.toLowerCase());
+      rooms.push({
+        roomType: normalizedType,
+        rate: rate || 0,
+        quantity: quantity || 1,
+        floor: floor || undefined,
+        wing: wing || undefined,
+        hotelName: hotelName || undefined,
+      });
+    }
+  }
+
+  // ── Strategy 3: Generic table-row extraction with separators ──
+  if (rooms.length === 0) {
+    const rowPatterns = [
+      // Pipe/tab separated
+      /([A-Za-z][A-Za-z\s]{2,40}?)\s*(?:[|│┃\t])\s*[₹$]?\s*(?:Rs\.?\s*)?([\d,]+(?:\.\d{2})?)\s*(?:\/[- ]?(?:night|room|n))?\s*(?:[|│┃\t])\s*(\d+)\s*(?:rooms?|units?|nos?\.?|keys|pax)?/gi,
+      // 2+ space separated: Name   Rate   Qty
+      /^([A-Za-z][A-Za-z\s/&()]{2,40}?)\s{2,}[₹$]?\s*(?:Rs\.?\s*)?([\d,]+)\s{2,}(\d+)\s*$/gm,
+      // Name, Rate, Qty (CSV-ish)
+      /([A-Za-z][A-Za-z\s]{2,40}?)\s*,\s*[₹$]?\s*(?:Rs\.?\s*)?([\d,]+)\s*,\s*(\d+)/gi,
+    ];
+
+    for (const rowPattern of rowPatterns) {
+      let rowMatch;
+      while ((rowMatch = rowPattern.exec(text)) !== null) {
+        const name = rowMatch[1].trim();
+        const rate = parseInt(rowMatch[2].replace(/,/g, ""));
+        const qty = parseInt(rowMatch[3]);
+        if (
+          name.length > 2 &&
+          name.length < 50 &&
+          rate > 100 &&
+          rate < 10000000 &&
+          qty > 0 &&
+          qty < 10000 &&
+          !seen.has(name.toLowerCase())
+        ) {
+          seen.add(name.toLowerCase());
+          rooms.push({ roomType: name, rate, quantity: qty });
+        }
+      }
+      if (rooms.length > 0) break;
+    }
+  }
+
+  // ── Strategy 4: "Room Type" table header scanning ──
+  if (rooms.length === 0) {
+    const tableHeaderIdx = text.search(
+      /room\s*type|category|accommodation\s*type/i
+    );
+    if (tableHeaderIdx >= 0) {
+      const tableText = text.substring(tableHeaderIdx, tableHeaderIdx + 2000);
+      const lines = tableText.split("\n").slice(1);
+      for (const line of lines) {
+        if (line.trim().length < 5) continue;
+        const lineMatch = line.match(
+          /([A-Za-z][A-Za-z\s/&-]{2,40}?)\s+.*?([\d,]{3,})/
+        );
+        if (lineMatch) {
+          const name = lineMatch[1].trim();
+          const rate = parseInt(lineMatch[2].replace(/,/g, ""));
+          const qtyInLine = line.match(
+            /(\d+)\s*(?:rooms?|units?|nos?\.?|keys|pax)/i
+          );
+          const qty = qtyInLine ? parseInt(qtyInLine[1]) : 1;
+          if (
+            rate > 100 &&
+            rate < 10000000 &&
+            !seen.has(name.toLowerCase())
+          ) {
+            seen.add(name.toLowerCase());
+            rooms.push({ roomType: name, rate, quantity: qty });
+          }
+        }
       }
     }
   }
@@ -578,14 +1395,67 @@ function extractRooms(
   return rooms;
 }
 
-/** Extract add-ons and inclusions from text. */
+/**
+ * Extract add-ons, services, and inclusions from text.
+ * Uses both keyword matching and table data.
+ */
 function extractAddOns(
-  text: string
+  text: string,
+  tableRows: TableRow[]
 ): ParsedContract["addOns"] {
   const addOns: ParsedContract["addOns"] = [];
   const seen = new Set<string>();
 
-  // Common add-on/inclusion keywords to search for
+  // ── Strategy 1: Table rows that look like services (not rooms) ──
+  for (const row of tableRows) {
+    const desc = row.description;
+    // Skip room-type items (they're handled by extractRooms)
+    if (
+      /^(?:deluxe|standard|premium|executive|royal|superior|twin|double|single|king|queen|club|penthouse)\s+(?:room|suite|villa|cottage|studio)/i.test(
+        desc
+      ) ||
+      /\broom\b.*\b(?:deluxe|suite|standard|premium|executive|superior)\b/i.test(
+        desc
+      )
+    )
+      continue;
+    // Also skip if it ONLY says "Deluxe Rooms", "Standard Rooms" etc.
+    if (
+      /^(?:deluxe|standard|premium|executive|royal|superior)\s+rooms?$/i.test(
+        desc
+      )
+    )
+      continue;
+
+    // Check if it's a service/add-on
+    const isService =
+      /banquet|hall|catering|audio|visual|setup|rental|decoration|photography|dj|music|entertainment|transfer|shuttle|airport|valet|parking|flowers?|stage|lighting|sound|projector|screen|podium|ceremony|food|beverage|drinks?|bar|lounge|menu|buffet|pax|breakfast|lunch|dinner|spa|wifi|internet|gym|pool|laundry|concierge/i.test(
+        desc
+      );
+
+    // If it has numbers and isn't a pure room type, treat it as a service
+    if (
+      (isService || row.numbers.length >= 2) &&
+      !seen.has(desc.toLowerCase())
+    ) {
+      // Double check it's not a room
+      const isDefinitelyRoom =
+        /^(?:deluxe|standard|premium|executive|royal|superior|family|luxury|classic|junior|grand|honeymoon|penthouse|villa|cottage|studio|twin|double|single|king|queen|club|garden|ocean|lake|mountain|valley|pool|city)\s/i.test(
+          desc
+        );
+      if (isDefinitelyRoom) continue;
+
+      seen.add(desc.toLowerCase());
+      const { rate } = interpretTableRow(row.numbers);
+      addOns.push({
+        name: desc,
+        price: rate || 0,
+        isIncluded: false,
+      });
+    }
+  }
+
+  // ── Strategy 2: Keyword-based pattern matching ──
   const addOnPatterns = [
     { pattern: /airport\s*(?:pickup|transfer|drop|shuttle)/i, name: "Airport Transfer" },
     { pattern: /welcome\s*(?:dinner|drink|cocktail|reception)/i, name: "Welcome Dinner" },
@@ -602,7 +1472,6 @@ function extractAddOns(
     { pattern: /photography/i, name: "Photography" },
     { pattern: /(?:dj|music|entertainment)/i, name: "Entertainment" },
     { pattern: /decoration/i, name: "Decoration" },
-    { pattern: /catering/i, name: "Catering" },
     { pattern: /(?:mini-?bar|minibar)/i, name: "Mini Bar" },
     { pattern: /(?:room\s*service)/i, name: "Room Service" },
     { pattern: /(?:concierge)/i, name: "Concierge" },
@@ -611,37 +1480,61 @@ function extractAddOns(
     { pattern: /(?:sangeet|sangeeth)/i, name: "Sangeet Ceremony" },
     { pattern: /(?:haldi)/i, name: "Haldi Ceremony" },
     { pattern: /(?:cocktail)\s*(?:party|night|event)?/i, name: "Cocktail Party" },
+    { pattern: /(?:audio|a\s*\/?\s*v)\s*(?:visual|setup|equipment)/i, name: "Audio/Visual Setup" },
+    { pattern: /banquet\s*(?:hall|room|rental)/i, name: "Banquet Hall" },
+    { pattern: /(?:conference|meeting)\s*(?:room|hall|facility)/i, name: "Conference Room" },
+    { pattern: /catering\s*(?:service)?/i, name: "Catering" },
+    { pattern: /projector|screen|podium/i, name: "AV Equipment" },
+    { pattern: /valet/i, name: "Valet Parking" },
+    { pattern: /(?:flower|floral)\s*(?:arrangement|decoration)?/i, name: "Flower Arrangement" },
+    { pattern: /(?:stage|lighting|sound)\s*(?:setup)?/i, name: "Stage Setup" },
   ];
 
   const lower = text.toLowerCase();
 
   for (const { pattern, name } of addOnPatterns) {
+    if (seen.has(name.toLowerCase()) || seen.has(name)) continue;
+
     const match = lower.match(pattern);
-    if (match && !seen.has(name)) {
+    if (match) {
+      seen.add(name.toLowerCase());
       seen.add(name);
 
-      // Determine if complimentary or paid — use TIGHT context (only the line containing the match)
+      // Get line-scoped context for this add-on
       const idx = lower.indexOf(match[0]);
-      // Find the line boundaries around this match
-      const lineStart = Math.max(0, lower.lastIndexOf('\n', idx));
-      const lineEnd = lower.indexOf('\n', idx + match[0].length);
-      const lineContext = lower.substring(lineStart, lineEnd > -1 ? lineEnd : idx + 200);
+      const lineStart = lower.lastIndexOf("\n", idx);
+      const lineEnd = lower.indexOf("\n", idx + match[0].length);
+      const currentLine = lower.substring(
+        lineStart >= 0 ? lineStart : 0,
+        lineEnd >= 0 ? lineEnd : lower.length
+      );
+      // Also check NEXT line (complimentary/included often on the line below)
+      const nextLineEnd = lower.indexOf(
+        "\n",
+        lineEnd >= 0 ? lineEnd + 1 : idx + match[0].length
+      );
+      const twoLines = lower.substring(
+        lineStart >= 0 ? lineStart : 0,
+        nextLineEnd >= 0 ? nextLineEnd : lower.length
+      );
 
+      // Check complimentary on current + next line (PDF text often splits label and status onto separate lines)
       const isIncluded =
-        /complimentary|✓\s*complimentary|included|free|no\s*charge|inclusive|gratis|at no cost/i.test(
-          lineContext
-        ) && !/\d{3,}/.test(lineContext.replace(match[0], '')); // Not included if there's a price on the same line
+        /complimentary|included|free|no\s*charge|inclusive|gratis|at no cost/i.test(twoLines)
+        && !/[₹$]\s*[\d,]{3,}|(?:rs\.?|inr)\s*[\d,]{3,}/i.test(twoLines);
 
-      // Try to find a price
       let price = 0;
       if (!isIncluded) {
-        const priceMatch = lineContext.match(
+        // Look for price AFTER the keyword (not before) to avoid picking up adjacent add-on prices
+        const afterKeyword = lower.substring(
+          idx + match[0].length,
+          Math.min(lower.length, idx + match[0].length + 80)
+        );
+        const afterPriceMatch = afterKeyword.match(
           /[₹$]\s*([\d,]+)|(?:rs\.?|inr)\s*([\d,]+)/i
         );
-        if (priceMatch) {
-          price = parseInt(
-            (priceMatch[1] || priceMatch[2]).replace(/,/g, "")
-          );
+        if (afterPriceMatch) {
+          price = parseInt((afterPriceMatch[1] || afterPriceMatch[2]).replace(/,/g, ""));
         }
       }
 
@@ -652,34 +1545,41 @@ function extractAddOns(
   return addOns;
 }
 
-/** Extract attrition/cancellation rules from text. */
+/**
+ * Extract attrition/cancellation rules from text.
+ * Handles 9+ pattern variants including "within X days", "incur X% charge",
+ * labeled percentages, and standalone penalty statements.
+ */
 function extractAttritionRules(
   text: string
 ): ParsedContract["attritionRules"] {
   const rules: ParsedContract["attritionRules"] = [];
 
-  // Look for the attrition/release section
-  const attritionIdx = text.toLowerCase().search(/attrition|release\s*schedule|cancellation\s*policy/);
-  const searchText = attritionIdx >= 0 ? text.substring(attritionIdx) : text;
+  // Focus on the attrition/cancellation section if it exists
+  const attritionIdx = text
+    .toLowerCase()
+    .search(
+      /attrition|release\s*schedule|cancellation\s*policy|cancellation\s*clause|penalty|cut[\s-]*off|terms\s*(?:&|and)\s*conditions/
+    );
+  const searchText =
+    attritionIdx >= 0 ? text.substring(attritionIdx) : text;
 
-  // Pattern 1: "March 10, 2026 30% Release" — date followed by percentage (our demo format)
-  const dateThenPercent =
-    /((?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}|\d{4}-\d{2}-\d{2})\s*(?:[^\n]*?)(\d+)\s*%\s*(?:release|cancel)/gi;
   let m;
+
+  // Pattern 1: "Date ... X% release/cancel" — date followed by percentage
+  const dateThenPercent =
+    /((?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}|\d{4}-\d{2}-\d{2})\s*(?:[^\n]*?)(\d+)\s*%\s*(?:release|cancel|reduction|unsold|attrition)/gi;
   while ((m = dateThenPercent.exec(searchText)) !== null) {
     const dateStr = m[1];
     const percent = parseInt(m[2]);
-    // Get the next line as description
-    const afterMatch = searchText.substring(m.index + m[0].length, m.index + m[0].length + 200);
-    const descLine = afterMatch.match(/[^\n]*(?:release|cancel|unsold|rooms|inventory|prior|check)[^\n]*/i);
     rules.push({
       releaseDate: normalizeDateString(dateStr),
       releasePercent: percent,
-      description: descLine ? descLine[0].trim().substring(0, 200) : `Release ${percent}% of rooms`,
+      description: `Release ${percent}% of rooms`,
     });
   }
 
-  // Pattern 2: "30% ... March 10, 2026" — percentage followed by date
+  // Pattern 2: "X% ... Date" — percentage followed by date
   if (rules.length === 0) {
     const percentThenDate =
       /(\d+)\s*%\s*(?:.*?)((?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}|\d{4}-\d{2}-\d{2})/gi;
@@ -692,10 +1592,10 @@ function extractAttritionRules(
     }
   }
 
-  // Pattern 3: "X days before" patterns
+  // Pattern 3: "X days before/prior ... X%" (days then percentage)
   if (rules.length === 0) {
     const daysBeforePattern =
-      /(\d+)\s*days?\s*(?:before|prior|ahead).*?(\d+)\s*%/gi;
+      /(\d+)\s*days?\s*(?:before|prior|ahead|in\s*advance).*?(\d+)\s*%/gi;
     while ((m = daysBeforePattern.exec(searchText)) !== null) {
       rules.push({
         releaseDate: "",
@@ -705,52 +1605,140 @@ function extractAttritionRules(
     }
   }
 
-  return rules;
-}
-
-/** Try to normalize various date string formats to YYYY-MM-DD */
-function normalizeDateString(dateStr: string): string {
-  const months: Record<string, string> = {
-    january: "01", february: "02", march: "03", april: "04",
-    may: "05", june: "06", july: "07", august: "08",
-    september: "09", october: "10", november: "11", december: "12",
-    jan: "01", feb: "02", mar: "03", apr: "04",
-    jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
-  };
-
-  // ISO format
-  const iso = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return iso[0];
-
-  // Month name formats
-  const named = dateStr.match(
-    /(\d{1,2})\s*(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s*(\d{4})/i
-  );
-  if (named) {
-    return `${named[3]}-${months[named[2].toLowerCase()]}-${named[1].padStart(2, "0")}`;
-  }
-
-  const named2 = dateStr.match(
-    /(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s*(\d{1,2}),?\s*(\d{4})/i
-  );
-  if (named2) {
-    return `${named2[3]}-${months[named2[1].toLowerCase()]}-${named2[2].padStart(2, "0")}`;
-  }
-
-  // DD/MM/YYYY or DD-MM-YYYY
-  const numeric = dateStr.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
-  if (numeric) {
-    const a = parseInt(numeric[1]);
-    const b = parseInt(numeric[2]);
-    if (a <= 31 && b <= 12) {
-      return `${numeric[3]}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
+  // Pattern 4: "X% ... X days" (percentage then days)
+  if (rules.length === 0) {
+    const percentDaysPattern =
+      /(\d+)\s*%\s*(?:.*?)(\d+)\s*days?\s*(?:before|prior|ahead|in\s*advance)/gi;
+    while ((m = percentDaysPattern.exec(searchText)) !== null) {
+      rules.push({
+        releaseDate: "",
+        releasePercent: parseInt(m[1]),
+        description: `Release ${parseInt(m[1])}% of rooms ${parseInt(m[2])} days prior to check-in`,
+      });
     }
   }
 
-  return dateStr;
+  // Pattern 5: "within X days ... X% charge/penalty" (common in Indian contracts)
+  if (rules.length === 0) {
+    const withinDaysPattern =
+      /(?:cancellation|cancel)\s*(?:within|inside|less\s*than)\s*(\d+)\s*days?\s*(?:of|before|from)?\s*(?:the\s*)?(?:event|check[\s-]*in|arrival|function)?[^.]*?(\d+)\s*%\s*(?:charge|penalty|fee|of\s*(?:the\s*)?total|cancellation)/gi;
+    while ((m = withinDaysPattern.exec(searchText)) !== null) {
+      rules.push({
+        releaseDate: "",
+        releasePercent: parseInt(m[2]),
+        description: `${parseInt(m[2])}% cancellation charge within ${parseInt(m[1])} days of the event`,
+      });
+    }
+  }
+
+  // Pattern 6: "within X days ... will incur/attract X%" (alternate wording)
+  if (rules.length === 0) {
+    const incurPattern =
+      /(?:cancellation\s*)?(?:within|inside)\s*(\d+)\s*days?[^.]*?(?:will\s*)?(?:incur|attract|result\s*in|lead\s*to|be\s*subject\s*to)\s*(\d+)\s*%/gi;
+    while ((m = incurPattern.exec(searchText)) !== null) {
+      rules.push({
+        releaseDate: "",
+        releasePercent: parseInt(m[2]),
+        description: `${parseInt(m[2])}% charge for cancellation within ${parseInt(m[1])} days`,
+      });
+    }
+  }
+
+  // Pattern 7: Simple "penalty of X%" or "charge of X%" or "X% penalty"
+  if (rules.length === 0) {
+    const penaltyPattern =
+      /(?:penalty|charge|fee)\s*(?:of|:)?\s*(\d+)\s*%/gi;
+    while ((m = penaltyPattern.exec(searchText)) !== null) {
+      rules.push({
+        releaseDate: "",
+        releasePercent: parseInt(m[1]),
+        description: `${parseInt(m[1])}% penalty on cancellation`,
+      });
+    }
+  }
+
+  // Pattern 8: "X% ... penalty/charge/fee" (percentage then penalty word)
+  if (rules.length === 0) {
+    const percentPenaltyPattern =
+      /(\d+)\s*%\s*(?:cancellation\s*)?(?:penalty|charge|fee)/gi;
+    while ((m = percentPenaltyPattern.exec(searchText)) !== null) {
+      rules.push({
+        releaseDate: "",
+        releasePercent: parseInt(m[1]),
+        description: `${parseInt(m[1])}% cancellation penalty`,
+      });
+    }
+  }
+
+  // Pattern 9: "X% advance payment" — extract payment terms too
+  if (rules.length === 0) {
+    const advancePattern =
+      /(\d+)\s*%\s*(?:advance|upfront|down)\s*(?:payment|deposit)/gi;
+    while ((m = advancePattern.exec(searchText)) !== null) {
+      rules.push({
+        releaseDate: "",
+        releasePercent: parseInt(m[1]),
+        description: `${parseInt(m[1])}% advance payment required`,
+      });
+    }
+  }
+
+  return rules;
 }
 
-// ─── Event Invitation Parsing ─────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLIENT / ORGANIZER NAME EXTRACTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Extract the client / organizer name from a contract.
+ * Looks for labeled fields like "Client Name:", "Company:", "Organized By:", etc.
+ * Also detects "between X and Y" contract preamble patterns.
+ */
+function extractClientName(
+  text: string,
+  fields: Record<string, string>
+): string {
+  // Strategy 1: Labeled fields
+  const clientFieldKeys = [
+    "client name", "client", "company name", "company", "organized by",
+    "organizer", "booking by", "booked by", "coordinated by", "group name",
+    "group", "party name", "contact person", "organiser",
+  ];
+  for (const key of clientFieldKeys) {
+    if (fields[key] && fields[key].length >= 2 && fields[key].length < 100) {
+      return fields[key];
+    }
+  }
+
+  // Strategy 2: "between [Client] and [Hotel]" — common contract opening
+  const betweenMatch = text.match(
+    /between\s+([A-Z][A-Za-z\s&'.]+?)\s+(?:and|&)\s+(?:[A-Z].*?(?:Hotel|Resort|Palace|Inn|Lodge|Retreat|Spa))/i
+  );
+  if (betweenMatch?.[1]) {
+    const name = betweenMatch[1].trim().replace(/[,.]$/, "");
+    if (name.length >= 3 && name.length < 80) return name;
+  }
+
+  // Strategy 3: Regex on text patterns
+  const patterns = [
+    /(?:client|company|organiz(?:er|ed\s*by)|group)\s*[:–—-]\s*\n?\s*([^\n]{3,80})/i,
+    /(?:booking\s*(?:by|for)|booked\s*(?:by|for))\s*[:–—-]?\s*\n?\s*([^\n]{3,80})/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      const name = match[1].trim().replace(/[,.]$/, "");
+      if (name.length >= 3) return name.substring(0, 80);
+    }
+  }
+
+  return "";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EVENT INVITATION PARSING
+// ═══════════════════════════════════════════════════════════════════════════════
 
 const EVENT_TYPES = [
   { pattern: /wedding|marriage|shaadi|vivah|nikah/i, type: "wedding" },
@@ -771,10 +1759,25 @@ function detectEventType(text: string): string {
   return "event";
 }
 
-function extractEventName(text: string, eventType: string): string {
-  // Try explicit patterns
+function extractEventName(
+  text: string,
+  eventType: string,
+  fields: Record<string, string>
+): string {
+  // Strategy 1: Labeled fields
+  const nameFieldKeys = [
+    "event name", "function name", "event", "function",
+    "ceremony", "conference name", "programme",
+  ];
+  for (const key of nameFieldKeys) {
+    if (fields[key] && fields[key].length >= 3 && fields[key].length < 100) {
+      return fields[key];
+    }
+  }
+
+  // Strategy 2: Regex patterns
   const namePatterns = [
-    /(?:event|function|ceremony)\s*(?:name)?\s*[:–—-]\s*(.+)/i,
+    /(?:event|function|ceremony|conference)\s*(?:name)?\s*[:–—-]\s*\n?\s*(.+)/i,
     /(?:the\s+)?([A-Z][a-z]+(?:\s*[-&]\s*[A-Z][a-z]+)?\s+(?:Wedding|Marriage|Conference|Summit|Gala|Celebration|Ceremony|Reception|Launch|Reunion))/,
   ];
 
@@ -783,9 +1786,8 @@ function extractEventName(text: string, eventType: string): string {
     if (match?.[1]) return match[1].trim().substring(0, 100);
   }
 
-  // For weddings, try to find two family names
+  // Strategy 3: For weddings, find two family names
   if (eventType === "wedding") {
-    // Pattern: "Sharma & Patel" or "Sharma-Patel" or "Rajeev weds Priya"
     const familyPattern = text.match(
       /([A-Z][a-z]+)\s*(?:&|and|-|weds|❤)\s*([A-Z][a-z]+)/
     );
@@ -794,14 +1796,16 @@ function extractEventName(text: string, eventType: string): string {
     }
   }
 
-  // Fallback: use first significant capitalized phrase
+  // Strategy 4: First significant capitalized phrase
   const titleMatch = text.match(/^([A-Z][A-Za-z\s&'\-]{5,60})$/m);
   if (titleMatch) return titleMatch[1].trim();
 
   return "";
 }
 
-// ─── Color Extraction from Images ─────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// COLOR EXTRACTION FROM IMAGES
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export async function extractColorsFromImage(
   buffer: Buffer
@@ -810,18 +1814,12 @@ export async function extractColorsFromImage(
     const sharp = (await import("sharp")).default;
     const { dominant } = await sharp(buffer).stats();
 
-    // Dominant color
     const primary = rgbToHex(dominant.r, dominant.g, dominant.b);
-
-    // Generate harmonious secondary and accent
-    // Secondary: lighter version
     const secondary = rgbToHex(
       Math.min(255, dominant.r + 100),
       Math.min(255, dominant.g + 100),
       Math.min(255, dominant.b + 100)
     );
-
-    // Accent: complementary-ish shift
     const accent = rgbToHex(
       Math.min(255, Math.abs(dominant.r - 40) + 80),
       Math.min(255, Math.abs(dominant.g - 20) + 60),
@@ -845,7 +1843,9 @@ function rgbToHex(r: number, g: number, b: number): string {
   );
 }
 
-// ─── Main Parse Functions ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN PARSE FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export interface ParseResult<T> {
   success: boolean;
@@ -855,54 +1855,101 @@ export interface ParseResult<T> {
 }
 
 /**
- * Parse a hotel contract from a PDF buffer.
+ * Parse a hotel contract from a PDF or image buffer.
+ * Supports text-based PDFs, scanned PDFs (via OCR), and image uploads.
  * Returns structured data or a validation error.
  */
 export async function parseContractLocally(
   buffer: Buffer,
   mimeType: string
 ): Promise<ParseResult<ParsedContract>> {
-  // Only PDFs can be text-parsed locally
-  if (!mimeType.includes("pdf")) {
-    return {
-      success: false,
-      error:
-        "Contract parsing requires a text-based PDF file. Please upload a PDF version of the hotel contract for best results.",
-    };
-  }
+  let text = "";
+  let usedOCR = false;
 
-  let text: string;
-  try {
-    text = await extractTextFromPDF(buffer);
-  } catch (err) {
-    console.error("PDF extraction error:", err);
+  if (mimeType.includes("pdf")) {
+    // PDF: try text extraction with OCR fallback
+    try {
+      const result = await extractTextWithOCRFallback(buffer);
+      text = result.text;
+      usedOCR = result.usedOCR;
+    } catch (err) {
+      console.error("PDF extraction error:", err);
+      return {
+        success: false,
+        error:
+          "Failed to extract text from this PDF. The file may be corrupted, password-protected, or contain only scanned images.",
+      };
+    }
+  } else if (
+    mimeType.includes("image") ||
+    mimeType.includes("png") ||
+    mimeType.includes("jpg") ||
+    mimeType.includes("jpeg") ||
+    mimeType.includes("webp")
+  ) {
+    // Image upload: use OCR
+    try {
+      text = normalizeText(await extractTextFromImage(buffer));
+      usedOCR = true;
+    } catch (err) {
+      console.error("Image OCR error:", err);
+      return {
+        success: false,
+        error:
+          "Failed to extract text from this image. Please upload a clearer image or a text-based PDF.",
+      };
+    }
+  } else {
     return {
       success: false,
       error:
-        "Failed to extract text from this PDF. The file may be corrupted, password-protected, or contain only scanned images.",
+        "Unsupported file type. Please upload a PDF or image file (PNG, JPEG, WebP).",
     };
   }
 
   // Validate content
   const validation = validateContractText(text);
   if (!validation.isValid) {
-    return { success: false, error: validation.error, validation };
+    return {
+      success: false,
+      error: usedOCR
+        ? `OCR was used but ${validation.error?.toLowerCase() || "insufficient text was recognized."} Try uploading a higher-quality scan or a text-based PDF.`
+        : validation.error,
+      validation,
+    };
   }
 
-  // Extract structured data
-  const venue = extractVenue(text);
-  const location = extractLocation(text);
-  const [checkIn, checkOut] = extractDates(text);
-  const rooms = extractRooms(text);
-  const addOns = extractAddOns(text);
+  // Extract labeled fields (e.g., "Hotel Name: Grand Horizon Hotel")
+  const fields = extractLabeledFields(text);
+
+  // Parse table data
+  const tableRows = parseTableRows(text);
+
+  // Extract structured data using all strategies
+  const venue = extractVenue(text, fields);
+  const location = extractLocation(text, fields);
+  const [checkIn, checkOut] = extractDates(text, fields);
+  const rooms = extractRooms(text, tableRows);
+  const addOns = extractAddOns(text, tableRows);
   const attritionRules = extractAttritionRules(text);
+
+  // Extract event info from contract (event name, type, client)
+  const eventType = detectEventType(text);
+  const eventName = extractEventName(text, eventType, fields);
+  const clientName = extractClientName(text, fields);
 
   const data: ParsedContract = {
     venue: venue || "Unknown Venue",
     location: location || "Unknown Location",
     checkIn: checkIn || "",
     checkOut: checkOut || "",
-    rooms: rooms.length > 0 ? rooms : [{ roomType: "Standard Room", rate: 0, quantity: 1 }],
+    eventName: eventName || "",
+    eventType: eventType || "event",
+    clientName: clientName || "",
+    rooms:
+      rooms.length > 0
+        ? rooms
+        : [{ roomType: "Standard Room", rate: 0, quantity: 1 }],
     addOns,
     attritionRules,
   };
@@ -922,9 +1969,9 @@ export async function parseInviteLocally(
   let colors = { primary: "#4F46E5", secondary: "#EEF2FF", accent: "#818CF8" };
 
   if (mimeType.includes("pdf")) {
-    // Extract text from PDF
     try {
-      text = await extractTextFromPDF(buffer);
+      const result = await extractTextWithOCRFallback(buffer);
+      text = result.text;
     } catch (err) {
       console.error("PDF invite extraction error:", err);
       return {
@@ -933,7 +1980,6 @@ export async function parseInviteLocally(
       };
     }
 
-    // Validate
     const validation = validateInviteText(text);
     if (!validation.isValid) {
       return { success: false, error: validation.error, validation };
@@ -947,8 +1993,15 @@ export async function parseInviteLocally(
   ) {
     // Extract colors from image
     colors = await extractColorsFromImage(buffer);
-    // We can't extract text from images without OCR
-    // Return with extracted colors but minimal text info
+    // Also try OCR on the image for text content
+    try {
+      const ocrText = await extractTextFromImage(buffer);
+      if (ocrText.trim().length > 20) {
+        text = normalizeText(ocrText);
+      }
+    } catch {
+      // OCR failed, continue with just colors
+    }
   } else {
     return {
       success: false,
@@ -956,74 +2009,42 @@ export async function parseInviteLocally(
     };
   }
 
+  // Extract labeled fields
+  const fields = extractLabeledFields(text);
+
   // Detect event type and name from text
   const eventType = text ? detectEventType(text) : "event";
-  const eventName = text ? extractEventName(text, eventType) : "";
+  const eventName = text ? extractEventName(text, eventType, fields) : "";
 
-  // If text available, try to extract colors
+  // Extract colors from text if available
   if (text) {
-    // First check for hex codes
     const hexColors = text.match(/#[0-9A-Fa-f]{6}/g);
     if (hexColors && hexColors.length >= 1) colors.primary = hexColors[0];
     if (hexColors && hexColors.length >= 2) colors.secondary = hexColors[1];
     if (hexColors && hexColors.length >= 3) colors.accent = hexColors[2];
 
-    // If no hex codes, look for named colors in the text
     if (!hexColors || hexColors.length === 0) {
       const namedColorMap: Record<string, string> = {
-        "rose gold": "#B76E79",
-        "navy blue": "#001F5B",
-        "royal blue": "#2E3B8C",
-        "sky blue": "#87CEEB",
-        "baby blue": "#89CFF0",
-        "teal": "#008080",
-        "turquoise": "#40E0D0",
-        "maroon": "#800000",
-        "burgundy": "#800020",
-        "crimson": "#DC143C",
-        "scarlet": "#FF2400",
-        "ivory": "#FFFFF0",
-        "cream": "#FFFDD0",
-        "champagne": "#F7E7CE",
-        "gold": "#D4AF37",
-        "golden": "#DAA520",
-        "silver": "#C0C0C0",
-        "copper": "#B87333",
-        "bronze": "#CD7F32",
-        "blush": "#DE5D83",
-        "peach": "#FFCBA4",
-        "coral": "#FF7F50",
-        "salmon": "#FA8072",
-        "mauve": "#E0B0FF",
-        "lavender": "#E6E6FA",
-        "lilac": "#C8A2C8",
-        "plum": "#8E4585",
-        "purple": "#800080",
-        "wine": "#722F37",
-        "sage": "#B2AC88",
-        "mint": "#98FB98",
-        "emerald": "#50C878",
-        "forest green": "#228B22",
-        "olive": "#808000",
-        "charcoal": "#36454F",
-        "slate": "#708090",
-        "dusty rose": "#DCAE96",
-        "magenta": "#FF00FF",
-        "fuchsia": "#FF00FF",
-        "white": "#FFFFFF",
-        "black": "#000000",
-        "red": "#FF0000",
-        "blue": "#0000FF",
-        "green": "#008000",
-        "pink": "#FFC0CB",
-        "orange": "#FFA500",
-        "yellow": "#FFD700",
+        "rose gold": "#B76E79", "navy blue": "#001F5B", "royal blue": "#2E3B8C",
+        "sky blue": "#87CEEB", "baby blue": "#89CFF0", "teal": "#008080",
+        "turquoise": "#40E0D0", "maroon": "#800000", "burgundy": "#800020",
+        "crimson": "#DC143C", "scarlet": "#FF2400", "ivory": "#FFFFF0",
+        "cream": "#FFFDD0", "champagne": "#F7E7CE", "gold": "#D4AF37",
+        "golden": "#DAA520", "silver": "#C0C0C0", "copper": "#B87333",
+        "bronze": "#CD7F32", "blush": "#DE5D83", "peach": "#FFCBA4",
+        "coral": "#FF7F50", "salmon": "#FA8072", "mauve": "#E0B0FF",
+        "lavender": "#E6E6FA", "lilac": "#C8A2C8", "plum": "#8E4585",
+        "purple": "#800080", "wine": "#722F37", "sage": "#B2AC88",
+        "mint": "#98FB98", "emerald": "#50C878", "forest green": "#228B22",
+        "olive": "#808000", "charcoal": "#36454F", "slate": "#708090",
+        "dusty rose": "#DCAE96", "magenta": "#FF00FF", "fuchsia": "#FF00FF",
+        "white": "#FFFFFF", "black": "#000000", "red": "#FF0000",
+        "blue": "#0000FF", "green": "#008000", "pink": "#FFC0CB",
+        "orange": "#FFA500", "yellow": "#FFD700",
       };
 
       const textLower = text.toLowerCase();
       const foundColors: string[] = [];
-
-      // Sort by key length descending so "rose gold" matches before "gold"
       const sortedNames = Object.keys(namedColorMap).sort(
         (a, b) => b.length - a.length
       );
@@ -1038,7 +2059,6 @@ export async function parseInviteLocally(
     }
   }
 
-  // If we got colors from image but no text, still return success with colors
   const data: ParsedInvite = {
     eventName: eventName || "",
     eventType: eventType || "event",
@@ -1046,7 +2066,7 @@ export async function parseInviteLocally(
     secondaryColor: colors.secondary,
     accentColor: colors.accent,
     description: text
-      ? `Event details extracted from uploaded document.`
+      ? "Event details extracted from uploaded document."
       : "Colors extracted from uploaded image. Please enter event name and type manually.",
   };
 

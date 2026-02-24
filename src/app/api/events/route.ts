@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const eventName = invite?.eventName || "New Event";
+    const eventName = invite?.eventName || contract?.eventName || "New Event";
     const slug = slugify(eventName) + "-" + Date.now().toString(36);
 
     // Wrap entire creation in a transaction for atomicity
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
         data: {
           name: eventName,
           slug,
-          type: invite?.eventType || "wedding",
+          type: invite?.eventType || contract?.eventType || "wedding",
           venue: contract?.venue || "Venue TBD",
           location: contract?.location || "Location TBD",
           checkIn: new Date(contract?.checkIn || Date.now()),

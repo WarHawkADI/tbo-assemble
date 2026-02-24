@@ -41,6 +41,9 @@ interface ParsedEventData {
     location?: string;
     checkIn?: string;
     checkOut?: string;
+    eventName?: string;
+    eventType?: string;
+    clientName?: string;
     rooms?: RoomBlock[];
     addOns?: AddOn[];
     attritionRules?: AttritionRule[];
@@ -527,11 +530,14 @@ export default function OnboardingPage() {
                   {isEditing ? (
                     <input
                       className="w-full text-sm font-semibold text-gray-900 dark:text-zinc-100 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400"
-                      value={parsedData.invite?.eventName || ""}
-                      onChange={(e) => updateInvite("eventName", e.target.value)}
+                      value={parsedData.invite?.eventName || parsedData.contract?.eventName || ""}
+                      onChange={(e) => {
+                        if (parsedData.invite) updateInvite("eventName", e.target.value);
+                        else updateContract("eventName", e.target.value);
+                      }}
                     />
                   ) : (
-                    <p className="text-sm font-semibold text-gray-900 dark:text-zinc-100">{parsedData.invite?.eventName || <span className="text-gray-300 italic">Not extracted</span>}</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-zinc-100">{parsedData.invite?.eventName || parsedData.contract?.eventName || <span className="text-gray-300 italic">Not extracted</span>}</p>
                   )}
                 </div>
                 {/* Event Type */}
@@ -540,8 +546,11 @@ export default function OnboardingPage() {
                   {isEditing ? (
                     <select
                       className="w-full text-sm font-semibold text-gray-900 dark:text-zinc-100 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400"
-                      value={parsedData.invite?.eventType || "event"}
-                      onChange={(e) => updateInvite("eventType", e.target.value)}
+                      value={parsedData.invite?.eventType || parsedData.contract?.eventType || "event"}
+                      onChange={(e) => {
+                        if (parsedData.invite) updateInvite("eventType", e.target.value);
+                        else updateContract("eventType", e.target.value);
+                      }}
                     >
                       <option value="wedding">Wedding</option>
                       <option value="conference">Conference</option>
@@ -554,7 +563,7 @@ export default function OnboardingPage() {
                       <option value="event">Other Event</option>
                     </select>
                   ) : (
-                    <p className="text-sm font-semibold text-gray-900 dark:text-zinc-100 capitalize">{parsedData.invite?.eventType || <span className="text-gray-300 italic">Not extracted</span>}</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-zinc-100 capitalize">{parsedData.invite?.eventType || parsedData.contract?.eventType || <span className="text-gray-300 italic">Not extracted</span>}</p>
                   )}
                 </div>
                 {/* Venue */}
@@ -611,6 +620,21 @@ export default function OnboardingPage() {
                     <p className="text-sm font-semibold text-gray-900 dark:text-zinc-100">{parsedData.contract?.checkOut || <span className="text-gray-300 italic">Not extracted</span>}</p>
                   )}
                 </div>
+                {/* Client / Organizer */}
+                {(parsedData.contract?.clientName || isEditing) && (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide">Client / Organizer</label>
+                  {isEditing ? (
+                    <input
+                      className="w-full text-sm font-semibold text-gray-900 dark:text-zinc-100 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400"
+                      value={parsedData.contract?.clientName || ""}
+                      onChange={(e) => updateContract("clientName", e.target.value)}
+                    />
+                  ) : (
+                    <p className="text-sm font-semibold text-gray-900 dark:text-zinc-100">{parsedData.contract?.clientName}</p>
+                  )}
+                </div>
+                )}
               </div>
               {/* Theme Palette */}
               <div className="mt-5 pt-4 border-t border-gray-100 dark:border-zinc-700">
