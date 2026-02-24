@@ -88,7 +88,14 @@ export function MicrositeSocialProof({ guestCount }: { guestCount: number }) {
 
   return (
     <div className="fixed bottom-20 lg:bottom-6 left-4 z-40 animate-social-proof">
-      <div className="bg-white dark:bg-zinc-800 rounded-xl shadow-lg border border-gray-200 dark:border-zinc-700 px-4 py-3 flex items-center gap-3 max-w-xs">
+      <div className="bg-white dark:bg-zinc-800 rounded-xl shadow-lg border border-gray-200 dark:border-zinc-700 px-4 py-3 flex items-center gap-3 max-w-xs relative">
+        <button
+          onClick={() => setShow(false)}
+          className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-gray-200 dark:bg-zinc-700 flex items-center justify-center text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-zinc-600 transition-colors text-xs leading-none"
+          aria-label="Dismiss"
+        >
+          &times;
+        </button>
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/50 shrink-0">
           <Hotel className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
         </div>

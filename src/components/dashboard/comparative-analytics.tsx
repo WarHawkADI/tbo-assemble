@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   BarChart,
   Bar,
@@ -38,7 +38,16 @@ const COLORS = [
 ];
 
 export function ComparativeAnalytics({ events }: ComparativeAnalyticsProps) {
-  const isDark = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const checkDark = () => setIsDark(document.documentElement.classList.contains('dark'));
+    checkDark();
+    const observer = new MutationObserver(checkDark);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
   const [metric, setMetric] = useState<"guests" | "rooms" | "revenue" | "occupancy">("guests");
 
   if (events.length === 0) {

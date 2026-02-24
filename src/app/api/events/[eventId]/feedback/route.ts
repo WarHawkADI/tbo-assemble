@@ -43,6 +43,14 @@ export async function POST(
       return NextResponse.json({ error: "Rating must be between 1 and 5" }, { status: 400 });
     }
 
+    // Validate sub-ratings range (1-5) if provided
+    if (stayRating !== undefined && stayRating !== null && (stayRating < 1 || stayRating > 5)) {
+      return NextResponse.json({ error: "Stay rating must be between 1 and 5" }, { status: 400 });
+    }
+    if (eventRating !== undefined && eventRating !== null && (eventRating < 1 || eventRating > 5)) {
+      return NextResponse.json({ error: "Event rating must be between 1 and 5" }, { status: 400 });
+    }
+
     // Sanitize comment — strip HTML tags
     const cleanComment = comment?.replace(/<[^>]*>/g, '') || '';
 

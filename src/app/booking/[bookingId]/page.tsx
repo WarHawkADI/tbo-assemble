@@ -106,7 +106,7 @@ export default function BookingSelfServicePage() {
 
   const fetchUpgradeOptions = async () => {
     try {
-      const res = await fetch(`/api/events/${booking?.event?.slug ? '' : ''}bookings/${params.bookingId}`);
+      const res = await fetch(`/api/bookings/${params.bookingId}`);
       if (!res.ok) return;
       const data = await res.json();
       // Fetch event rooms

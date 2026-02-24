@@ -22,7 +22,10 @@ export default function FeedbackFormPage() {
 
   useEffect(() => {
     fetch(`/api/events/search?q=${encodeURIComponent(params.slug)}`)
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load event");
+        return res.json();
+      })
       .then((data: { id: string; name: string; slug: string }[]) => {
         const event = Array.isArray(data) ? data.find((e) => e.slug === params.slug) : null;
         if (event) {

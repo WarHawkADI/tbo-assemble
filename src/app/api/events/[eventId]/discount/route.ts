@@ -73,12 +73,19 @@ export async function POST(
 }
 
 // DELETE - Remove discount rule
-export async function DELETE(request: Request) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ eventId: string }> }) {
   try {
+    const { eventId } = await params;
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     if (!id) {
       return NextResponse.json({ error: "Rule ID is required" }, { status: 400 });
+    }
+
+    // Verify the rule belongs to this event
+    const rule = await prisma.discountRule.findUnique({ where: { id } });
+    if (!rule || rule.eventId !== eventId) {
+      return NextResponse.json({ error: "Discount rule not found for this event" }, { status: 404 });
     }
 
     await prisma.discountRule.delete({ where: { id } });
@@ -86,5 +93,31 @@ export async function DELETE(request: Request) {
   } catch (error) {
     console.error("Delete discount rule error:", error);
     return NextResponse.json({ error: "Failed to delete discount rule" }, { status: 500 });
+  }
+}
+
+// PATCH - Toggle discount rule active/inactive
+export async function PATCH(request: Request, { params }: { params: Promise<{ eventId: string }> }) {
+  try {
+    const { eventId } = await params;
+    const { id, isActive } = await request.json();
+    if (!id) {
+      return NextResponse.json({ error: "Rule ID is required" }, { status: 400 });
+    }
+
+    // Verify the rule belongs to this event
+    const existing = await prisma.discountRule.findUnique({ where: { id } });
+    if (!existing || existing.eventId !== eventId) {
+      return NextResponse.json({ error: "Discount rule not found for this event" }, { status: 404 });
+    }
+
+    const rule = await prisma.discountRule.update({
+      where: { id },
+      data: { isActive },
+    });
+    return NextResponse.json(rule);
+  } catch (error) {
+    console.error("Update discount rule error:", error);
+    return NextResponse.json({ error: "Failed to update discount rule" }, { status: 500 });
   }
 }

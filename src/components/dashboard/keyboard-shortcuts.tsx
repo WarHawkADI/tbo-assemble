@@ -5,10 +5,10 @@ import { X, Keyboard } from "lucide-react";
 
 const SHORTCUTS = [
   { category: "Navigation", items: [
-    { keys: ["Ctrl", "D"], desc: "Go to Dashboard" },
-    { keys: ["Ctrl", "N"], desc: "Create New Event" },
-    { keys: ["Ctrl", "K"], desc: "Open Calendar" },
-    { keys: ["Ctrl", "A"], desc: "Open Analytics" },
+    { keys: ["Alt", "D"], desc: "Go to Dashboard" },
+    { keys: ["Alt", "N"], desc: "Create New Event" },
+    { keys: ["Alt", "K"], desc: "Open Calendar" },
+    { keys: ["Alt", "A"], desc: "Open Analytics" },
     { keys: ["?"], desc: "Show Keyboard Shortcuts" },
   ]},
   { category: "Actions", items: [
@@ -16,10 +16,7 @@ const SHORTCUTS = [
     { keys: ["Esc"], desc: "Close Modal / Cancel" },
     { keys: ["Tab"], desc: "Navigate Between Fields" },
   ]},
-  { category: "Dashboard", items: [
-    { keys: ["Ctrl", "Shift", "L"], desc: "Toggle Sidebar" },
-    { keys: ["Ctrl", "Shift", "T"], desc: "Toggle Theme" },
-  ]},
+
 ];
 
 export function KeyboardShortcutsOverlay() {

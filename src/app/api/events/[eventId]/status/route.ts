@@ -3,8 +3,8 @@ import prisma from "@/lib/db";
 
 // Valid status transitions
 const VALID_TRANSITIONS: Record<string, string[]> = {
-  draft: ["active"],
-  active: ["completed", "cancelled"],
+  draft: ["active", "published"],
+  active: ["completed", "cancelled", "published"],
   completed: ["active"], // Allow reactivation
   cancelled: ["draft"],  // Allow restart
   published: ["active", "cancelled"], // Published events can go active or be cancelled

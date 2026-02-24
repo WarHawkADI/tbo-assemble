@@ -47,7 +47,10 @@ export function CheckinClient({ eventId, eventName }: CheckinClientProps) {
 
   const fetchBookings = () => {
     fetch(`/api/bookings?eventId=${eventId}`)
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load bookings");
+        return res.json();
+      })
       .then((bookings) => {
         if (Array.isArray(bookings)) {
           const confirmed = bookings.filter((b: BookingEntry) => b.status === "confirmed");

@@ -76,7 +76,21 @@ export async function POST(
       where: { bookingId },
     });
     const addOnTotal = bookingAddOns.reduce((sum, ba) => sum + ba.price, 0);
-    const newTotalAmount = newRoomTotal + addOnTotal;
+    
+    // Re-apply discount rules to the new total
+    const discountRules = await prisma.discountRule.findMany({
+      where: { eventId: booking.eventId, isActive: true },
+      orderBy: { minRooms: "desc" },
+    });
+    const bookedCount = await prisma.booking.count({
+      where: { eventId: booking.eventId, status: "confirmed" },
+    });
+    const applicableRule = discountRules.find((r) => bookedCount >= r.minRooms);
+    const discountPct = applicableRule ? applicableRule.discountPct : 0;
+    const subtotal = newRoomTotal + addOnTotal;
+    const newTotalAmount = discountPct > 0
+      ? Math.round(subtotal * (1 - discountPct / 100))
+      : subtotal;
 
     // Wrap upgrade in a transaction for atomicity
     const updated = await prisma.$transaction(async (tx) => {

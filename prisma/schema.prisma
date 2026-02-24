@@ -87,6 +87,8 @@ model Guest {
   updatedAt        DateTime  @default(now()) @updatedAt
 
   @@index([eventId])
+  @@index([email])
+  @@index([status])
 }
 
 model AddOn {
@@ -122,6 +124,7 @@ model Booking {
 
   @@index([eventId])
   @@index([guestId])
+  @@index([status])
 }
 
 model BookingAddOn {
@@ -171,9 +174,9 @@ model Waitlist {
   updatedAt   DateTime  @default(now()) @updatedAt
 
   @@index([eventId])
+  @@index([status])
+  @@index([roomBlockId])
 }
-
-model ActivityLog {
   id        String   @id @default(uuid())
   eventId   String
   event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)

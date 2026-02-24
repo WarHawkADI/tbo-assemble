@@ -43,7 +43,10 @@ export default function InvoicePage() {
 
   useEffect(() => {
     fetch(`/api/bookings/${params.bookingId}`)
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load booking");
+        return res.json();
+      })
       .then(setBooking)
       .catch(() => {})
       .finally(() => setLoading(false));

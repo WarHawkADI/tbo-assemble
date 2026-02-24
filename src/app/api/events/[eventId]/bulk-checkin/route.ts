@@ -18,43 +18,63 @@ export async function POST(
       );
     }
 
-    const results: { id: string; status: "checked_in" | "already_checked_in" | "cancelled" | "error"; guest?: string }[] = [];
-
-    for (const bookingId of bookingIds) {
-      try {
-        const booking = await prisma.booking.findUnique({
-          where: { id: bookingId },
-          include: { guest: true, roomBlock: true },
-        });
-
-        if (!booking || booking.eventId !== eventId) {
-          results.push({ id: bookingId, status: "error" });
-          continue;
-        }
-
-        // Reject cancelled bookings
-        if (booking.status === "cancelled") {
-          results.push({ id: bookingId, status: "cancelled", guest: booking.guest.name });
-          continue;
-        }
-
-        if (booking.checkedIn) {
-          results.push({ id: bookingId, status: "already_checked_in", guest: booking.guest.name });
-          continue;
-        }
-
-        await prisma.booking.update({
-          where: { id: bookingId },
-          data: { checkedIn: true, checkedInAt: new Date() },
-        });
-
-        results.push({ id: bookingId, status: "checked_in", guest: booking.guest.name });
-      } catch {
-        results.push({ id: bookingId, status: "error" });
-      }
+    // Limit batch size
+    if (bookingIds.length > 200) {
+      return NextResponse.json(
+        { error: "Maximum 200 bookings can be checked in at once" },
+        { status: 400 }
+      );
     }
 
-    const checkedIn = results.filter((r) => r.status === "checked_in").length;
+    // Fetch all bookings at once instead of one-by-one (fix N+1)
+    const allBookings = await prisma.booking.findMany({
+      where: { id: { in: bookingIds } },
+      include: { guest: true, roomBlock: true },
+    });
+    const bookingMap = new Map(allBookings.map((b) => [b.id, b]));
+
+    const results: { id: string; status: "checked_in" | "already_checked_in" | "cancelled" | "error"; guest?: string }[] = [];
+    const toCheckIn: string[] = [];
+    const guestIdsToUpdate: string[] = [];
+
+    for (const bookingId of bookingIds) {
+      const booking = bookingMap.get(bookingId);
+
+      if (!booking || booking.eventId !== eventId) {
+        results.push({ id: bookingId, status: "error" });
+        continue;
+      }
+
+      if (booking.status === "cancelled") {
+        results.push({ id: bookingId, status: "cancelled", guest: booking.guest.name });
+        continue;
+      }
+
+      if (booking.checkedIn) {
+        results.push({ id: bookingId, status: "already_checked_in", guest: booking.guest.name });
+        continue;
+      }
+
+      toCheckIn.push(bookingId);
+      guestIdsToUpdate.push(booking.guestId);
+      results.push({ id: bookingId, status: "checked_in", guest: booking.guest.name });
+    }
+
+    // Batch update all bookings and guests in a transaction
+    if (toCheckIn.length > 0) {
+      await prisma.$transaction([
+        prisma.booking.updateMany({
+          where: { id: { in: toCheckIn } },
+          data: { checkedIn: true, checkedInAt: new Date() },
+        }),
+        prisma.guest.updateMany({
+          where: { id: { in: guestIdsToUpdate } },
+          data: { status: "checked-in" },
+        }),
+      ]);
+    }
+
+    const checkedIn = toCheckIn.length;
 
     if (checkedIn > 0) {
       await prisma.activityLog.create({

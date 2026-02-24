@@ -56,6 +56,7 @@ export async function POST(
       await prisma.roomBlock.create({
         data: {
           roomType: room.roomType,
+          description: room.description,
           rate: room.rate,
           totalQty: room.totalQty,
           bookedQty: 0,

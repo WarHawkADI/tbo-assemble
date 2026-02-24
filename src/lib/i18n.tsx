@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
 
 export type Locale = "en" | "hi";
 
@@ -151,6 +151,35 @@ const translations: Record<string, Record<Locale, string>> = {
   // Demo
   "live_demo": { en: "Live Demo Mode", hi: "लाइव डेमो मोड" },
   "revenue_at_risk": { en: "Revenue At Risk", hi: "जोखिम में राजस्व" },
+  // Event Types
+  "type_wedding": { en: "Wedding", hi: "शादी" },
+  "type_conference": { en: "Conference", hi: "सम्मेलन" },
+  "type_corporate": { en: "Corporate", hi: "कॉर्पोरेट" },
+  "type_social": { en: "Social Event", hi: "सामाजिक कार्यक्रम" },
+  // Guest Status
+  "status_confirmed": { en: "Confirmed", hi: "पुष्टि हो गई" },
+  "status_invited": { en: "Invited", hi: "आमंत्रित" },
+  "status_cancelled": { en: "Cancelled", hi: "रद्द" },
+  "status_checked_in": { en: "Checked In", hi: "चेक-इन" },
+  // Microsite extras
+  "venue_details": { en: "Venue Details", hi: "स्थल विवरण" },
+  "check_in_date": { en: "Check-in Date", hi: "चेक-इन तारीख़" },
+  "check_out_date": { en: "Check-out Date", hi: "चेक-आउट तारीख़" },
+  "total_nights": { en: "Total Nights", hi: "कुल रातें" },
+  "contact_organizer": { en: "Contact Organizer", hi: "आयोजक से संपर्क करें" },
+  "view_all_rooms": { en: "View All Rooms", hi: "सभी कमरे देखें" },
+  "whatsapp_support": { en: "WhatsApp Support", hi: "व्हाट्सएप सहायता" },
+  "need_help": { en: "Need Help?", hi: "सहायता चाहिए?" },
+  "faq": { en: "FAQ", hi: "सामान्य प्रश्न" },
+  "cancellation_policy": { en: "Cancellation Policy", hi: "रद्दीकरण नीति" },
+  "free_cancellation": { en: "Free cancellation up to 48 hours before check-in", hi: "चेक-इन से 48 घंटे पहले तक मुफ्त रद्दीकरण" },
+  "proximity_request": { en: "Proximity Request", hi: "निकटता अनुरोध" },
+  "near_elevator": { en: "Near elevator", hi: "लिफ्ट के पास" },
+  "same_floor_as": { en: "Same floor as", hi: "एक ही मंज़िल पर" },
+  "accessibility": { en: "Accessibility", hi: "सुगम्यता" },
+  "wheelchair_accessible": { en: "Wheelchair accessible rooms available", hi: "व्हीलचेयर सुगम कमरे उपलब्ध" },
+  "confirmation_sent": { en: "Confirmation has been sent to your email", hi: "पुष्टि आपके ईमेल पर भेजी गई है" },
+  "save_qr": { en: "Save this QR code for check-in", hi: "चेक-इन के लिए यह QR कोड सेव करें" },
 };
 
 interface I18nContextType {
@@ -166,7 +195,20 @@ const I18nContext = createContext<I18nContextType>({
 });
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocale] = useState<Locale>("en");
+  const [locale, setLocaleState] = useState<Locale>("en");
+
+  // Load persisted locale on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("tbo-locale") as Locale;
+      if (saved === "en" || saved === "hi") setLocaleState(saved);
+    } catch {}
+  }, []);
+
+  const setLocale = useCallback((l: Locale) => {
+    setLocaleState(l);
+    try { localStorage.setItem("tbo-locale", l); } catch {}
+  }, []);
 
   const t = useCallback(
     (key: string) => {

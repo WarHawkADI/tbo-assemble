@@ -66,7 +66,7 @@ export function DashboardHeader() {
               </div>
             ))}
           </div>
-          <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400">{collabCount} online</span>
+          <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400">{collabCount} online <span className="opacity-60">(Demo)</span></span>
         </div>
 
         {/* Live Status */}

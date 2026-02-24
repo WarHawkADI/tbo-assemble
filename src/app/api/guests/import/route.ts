@@ -13,6 +13,14 @@ export async function POST(request: Request) {
       );
     }
 
+    // Limit import size to prevent OOM
+    if (guests.length > 500) {
+      return NextResponse.json(
+        { error: "Maximum 500 guests can be imported at once" },
+        { status: 400 }
+      );
+    }
+
     // Check event exists
     const event = await prisma.event.findUnique({ where: { id: eventId } });
     if (!event) {
@@ -21,31 +29,37 @@ export async function POST(request: Request) {
 
     const created: string[] = [];
     const errors: { row: number; error: string }[] = [];
+    const guestsToCreate: { name: string; email: string | null; phone: string | null; group: string | null; notes: string | null; proximityRequest: string | null; status: string; eventId: string }[] = [];
 
     for (let i = 0; i < guests.length; i++) {
       const row = guests[i];
-      try {
-        const name = row.name || row.Name || row.guest_name || row["Guest Name"];
-        if (!name) {
-          errors.push({ row: i + 1, error: "Missing name" });
-          continue;
-        }
+      const name = row.name || row.Name || row.guest_name || row["Guest Name"];
+      if (!name) {
+        errors.push({ row: i + 1, error: "Missing name" });
+        continue;
+      }
+      guestsToCreate.push({
+        name,
+        email: row.email || row.Email || row["E-mail"] || null,
+        phone: row.phone || row.Phone || row["Phone Number"] || null,
+        group: row.group || row.Group || row["Guest Group"] || null,
+        notes: row.notes || row.Notes || null,
+        proximityRequest: row.proximity || row.Proximity || row["Proximity Request"] || null,
+        status: "invited",
+        eventId,
+      });
+      created.push(name);
+    }
 
-        await prisma.guest.create({
-          data: {
-            name,
-            email: row.email || row.Email || row["E-mail"] || null,
-            phone: row.phone || row.Phone || row["Phone Number"] || null,
-            group: row.group || row.Group || row["Guest Group"] || null,
-            notes: row.notes || row.Notes || null,
-            proximityRequest: row.proximity || row.Proximity || row["Proximity Request"] || null,
-            status: "invited",
-            eventId,
-          },
-        });
-        created.push(name);
+    // Batch create all guests in a single transaction
+    if (guestsToCreate.length > 0) {
+      try {
+        await prisma.$transaction(
+          guestsToCreate.map((g) => prisma.guest.create({ data: g }))
+        );
       } catch (err) {
-        errors.push({ row: i + 1, error: String(err) });
+        // Fallback: if batch fails, report as error
+        return NextResponse.json({ error: "Failed to import guests: " + String(err) }, { status: 500 });
       }
     }
 

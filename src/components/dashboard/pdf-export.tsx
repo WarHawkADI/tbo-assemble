@@ -27,6 +27,7 @@ export function PdfExportButton({ events }: { events: EventData[] }) {
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
+      alert("Popup blocked! Please allow popups for this site to export the PDF report.");
       setExporting(false);
       return;
     }

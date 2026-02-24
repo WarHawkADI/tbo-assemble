@@ -66,7 +66,7 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
   const [demoRunning, setDemoRunning] = useState(false);
   const [demoStep, setDemoStep] = useState(0);
   const [demoNotifications, setDemoNotifications] = useState<{ id: number; text: string; type: string }[]>([]);
-
+  const [visibleCount, setVisibleCount] = useState(6);
   // Set initial timestamp after mount to avoid hydration mismatch
   useEffect(() => {
     setLastRefresh(new Date());
@@ -524,8 +524,9 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
           </CardContent>
         </Card>
       ) : (
+        <>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {events.map((event) => {
+          {events.slice(0, visibleCount).map((event) => {
             const occupancy = event.totalRooms > 0
               ? Math.round((event.bookedRooms / event.totalRooms) * 100)
               : 0;
@@ -669,6 +670,30 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
             );
           })}
         </div>
+
+        {/* Pagination */}
+        {events.length > visibleCount && (
+          <div className="mt-6 text-center">
+            <Button
+              variant="outline"
+              onClick={() => setVisibleCount((prev) => prev + 6)}
+              className="gap-2"
+            >
+              Show More ({events.length - visibleCount} remaining)
+            </Button>
+          </div>
+        )}
+        {visibleCount > 6 && events.length > 6 && (
+          <div className="mt-3 text-center">
+            <button
+              onClick={() => setVisibleCount(6)}
+              className="text-sm text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 transition-colors"
+            >
+              Show Less
+            </button>
+          </div>
+        )}
+        </>
       )}
 
       {/* Copy toast notification */}

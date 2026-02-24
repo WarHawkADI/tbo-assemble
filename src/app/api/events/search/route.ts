@@ -22,10 +22,11 @@ export async function GET(request: Request) {
     if (type) where.type = type;
     if (slug) where.slug = slug;
     if (query) {
+      const q = query.trim();
       where.OR = [
-        { name: { contains: query } },
-        { venue: { contains: query } },
-        { location: { contains: query } },
+        { name: { contains: q } },
+        { venue: { contains: q } },
+        { location: { contains: q } },
       ];
     }
 

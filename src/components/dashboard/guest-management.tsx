@@ -15,6 +15,8 @@ import {
   Loader2,
   Check,
   Trash2,
+  Pencil,
+  Save,
 } from "lucide-react";
 
 interface Guest {
@@ -47,6 +49,8 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
   const [loading, setLoading] = useState(false);
   const [importResult, setImportResult] = useState<{ imported?: number; failed?: number } | null>(null);
   const [toast, setToast] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editData, setEditData] = useState({ name: "", email: "", phone: "", group: "", proximityRequest: "", notes: "" });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = (message: string) => {
@@ -100,6 +104,47 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
       }
     } catch (error) {
       console.error("Error deleting guest:", error);
+    }
+  };
+
+  const startEditing = (guest: Guest) => {
+    setEditingId(guest.id);
+    setEditData({
+      name: guest.name,
+      email: guest.email || "",
+      phone: guest.phone || "",
+      group: guest.group || "",
+      proximityRequest: guest.proximityRequest || "",
+      notes: guest.notes || "",
+    });
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditData({ name: "", email: "", phone: "", group: "", proximityRequest: "", notes: "" });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId || !editData.name.trim()) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/guests", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editingId, ...editData }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setGuests(guests.map((g) =>
+          g.id === editingId ? { ...g, ...updated } : g
+        ));
+        showToast("Guest updated successfully");
+        cancelEditing();
+      }
+    } catch (error) {
+      console.error("Error updating guest:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -450,29 +495,93 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
                   <tbody>
                     {groupGuests.map((guest) => (
                       <tr key={guest.id} className="border-t hover:bg-gray-50/50 dark:hover:bg-zinc-800/50 transition-colors">
-                        <td className="p-3 font-medium">{guest.name}</td>
-                        <td className="p-3 text-gray-500 dark:text-zinc-400">
-                          {guest.email || guest.phone || "-"}
-                        </td>
-                        <td className="p-3 text-gray-500 dark:text-zinc-400">
-                          {guest.bookings[0]?.roomBlock?.roomType || (
-                            <span className="text-gray-400 dark:text-zinc-500">Not booked</span>
-                          )}
-                        </td>
-                        <td className="p-3 text-gray-500 dark:text-zinc-400">{guest.proximityRequest || "-"}</td>
-                        <td className="p-3">
-                          <Badge variant={statusVariant(guest.status)}>{guest.status}</Badge>
-                        </td>
-                        <td className="p-3 text-right">
-                          <button
-                            onClick={() => handleDeleteGuest(guest.id)}
-                            className="text-gray-400 dark:text-zinc-500 hover:text-red-600 transition-colors p-1"
-                            title="Delete guest"
-                            aria-label={`Delete guest ${guest.name}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </td>
+                        {editingId === guest.id ? (
+                          <>
+                            <td className="p-2">
+                              <Input
+                                value={editData.name}
+                                onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                                className="h-8 text-sm"
+                                placeholder="Name"
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                value={editData.email}
+                                onChange={(e) => setEditData({ ...editData, email: e.target.value })}
+                                className="h-8 text-sm"
+                                placeholder="Email"
+                              />
+                            </td>
+                            <td className="p-3 text-gray-500 dark:text-zinc-400">
+                              {guest.bookings[0]?.roomBlock?.roomType || (
+                                <span className="text-gray-400 dark:text-zinc-500">Not booked</span>
+                              )}
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                value={editData.proximityRequest}
+                                onChange={(e) => setEditData({ ...editData, proximityRequest: e.target.value })}
+                                className="h-8 text-sm"
+                                placeholder="Proximity"
+                              />
+                            </td>
+                            <td className="p-3">
+                              <Badge variant={statusVariant(guest.status)}>{guest.status}</Badge>
+                            </td>
+                            <td className="p-3 text-right flex items-center justify-end gap-1">
+                              <button
+                                onClick={handleSaveEdit}
+                                disabled={loading}
+                                className="text-green-600 hover:text-green-700 transition-colors p-1"
+                                title="Save changes"
+                              >
+                                <Save className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={cancelEditing}
+                                className="text-gray-400 dark:text-zinc-500 hover:text-gray-600 transition-colors p-1"
+                                title="Cancel editing"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="p-3 font-medium">{guest.name}</td>
+                            <td className="p-3 text-gray-500 dark:text-zinc-400">
+                              {guest.email || guest.phone || "-"}
+                            </td>
+                            <td className="p-3 text-gray-500 dark:text-zinc-400">
+                              {guest.bookings[0]?.roomBlock?.roomType || (
+                                <span className="text-gray-400 dark:text-zinc-500">Not booked</span>
+                              )}
+                            </td>
+                            <td className="p-3 text-gray-500 dark:text-zinc-400">{guest.proximityRequest || "-"}</td>
+                            <td className="p-3">
+                              <Badge variant={statusVariant(guest.status)}>{guest.status}</Badge>
+                            </td>
+                            <td className="p-3 text-right flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => startEditing(guest)}
+                                className="text-gray-400 dark:text-zinc-500 hover:text-blue-600 transition-colors p-1"
+                                title="Edit guest"
+                                aria-label={`Edit guest ${guest.name}`}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteGuest(guest.id)}
+                                className="text-gray-400 dark:text-zinc-500 hover:text-red-600 transition-colors p-1"
+                                title="Delete guest"
+                                aria-label={`Delete guest ${guest.name}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </td>
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>

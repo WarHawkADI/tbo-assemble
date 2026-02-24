@@ -17,9 +17,9 @@ export async function GET(request: Request) {
     const guests = await prisma.guest.findMany({
       where: {
         OR: [
-          { name: { contains: q } },
-          { email: { contains: q } },
-          { phone: { contains: q } },
+          { name: { contains: q.trim() } },
+          { email: { contains: q.trim() } },
+          { phone: { contains: q.trim() } },
         ],
       },
       include: {

@@ -63,6 +63,7 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
   const [draggedGuest, setDraggedGuest] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [autoAllocating, setAutoAllocating] = useState(false);
+  const [allocationExplanations, setAllocationExplanations] = useState<Record<string, string>>({});
 
   const handleExportRoomingList = () => {
     const headers = ["Guest Name", "Email", "Phone", "Group", "Room Type", "Floor", "Wing", "Room Number", "Status"];
@@ -172,6 +173,10 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
       const data = await res.json();
       if (data.allocations) {
         setAllocations(data.allocations);
+        if (data.explanations) {
+          setAllocationExplanations(data.explanations);
+        }
+        showToast(`AI allocated ${data.allocated || 0} guests`);
       }
     } catch (e) {
       console.error(e);
@@ -301,12 +306,21 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
                     <div
                       key={guest.id}
                       className={`p-2.5 rounded-xl border text-xs flex items-center justify-between ${getGroupStyle(guest.group)}`}
+                      title={allocationExplanations[guest.id] || ""}
                     >
-                      <div className="flex items-center gap-2">
-                        <User className="h-3 w-3" />
-                        <span className="font-semibold">{guest.name}</span>
-                        {guest.group && (
-                          <span className="opacity-50 text-[10px]">({guest.group})</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <User className="h-3 w-3 flex-shrink-0" />
+                          <span className="font-semibold truncate">{guest.name}</span>
+                          {guest.group && (
+                            <span className="opacity-50 text-[10px]">({guest.group})</span>
+                          )}
+                        </div>
+                        {allocationExplanations[guest.id] && (
+                          <p className="text-[9px] mt-1 opacity-60 flex items-center gap-1 pl-5">
+                            <Sparkles className="h-2.5 w-2.5 flex-shrink-0" />
+                            {allocationExplanations[guest.id]}
+                          </p>
                         )}
                       </div>
                       <button

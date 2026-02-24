@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Percent, Plus, Loader2 } from "lucide-react";
+import { Percent, Plus, Loader2, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 
 interface DiscountRule {
   id: string;
@@ -26,10 +26,47 @@ export function DiscountRulesClient({ eventId, initialRules }: DiscountRulesClie
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const showToast = (message: string) => {
     setToast(message);
     setTimeout(() => setToast(""), 3000);
+  };
+
+  const handleDeleteRule = async (ruleId: string) => {
+    if (confirmDeleteId !== ruleId) {
+      setConfirmDeleteId(ruleId);
+      setTimeout(() => setConfirmDeleteId(null), 3000); // auto-cancel after 3s
+      return;
+    }
+    setConfirmDeleteId(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/discount?id=${ruleId}`, { method: "DELETE" });
+      if (res.ok) {
+        setRules((prev) => prev.filter((r) => r.id !== ruleId));
+        showToast("Discount rule deleted");
+      }
+    } catch {
+      showToast("Failed to delete rule");
+    }
+  };
+
+  const handleToggleRule = async (ruleId: string, currentActive: boolean) => {
+    try {
+      const res = await fetch(`/api/events/${eventId}/discount`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: ruleId, isActive: !currentActive }),
+      });
+      if (res.ok) {
+        setRules((prev) =>
+          prev.map((r) => (r.id === ruleId ? { ...r, isActive: !currentActive } : r))
+        );
+        showToast(`Rule ${!currentActive ? "activated" : "deactivated"}`);
+      }
+    } catch {
+      showToast("Failed to update rule");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -103,6 +140,30 @@ export function DiscountRulesClient({ eventId, initialRules }: DiscountRulesClie
                   <Badge variant={rule.isActive ? "success" : "secondary"}>
                     {rule.isActive ? "Active" : "Inactive"}
                   </Badge>
+                  <div className="flex items-center gap-1 ml-2">
+                    <button
+                      onClick={() => handleToggleRule(rule.id, rule.isActive)}
+                      className="text-gray-400 dark:text-zinc-500 hover:text-violet-600 transition-colors p-1"
+                      title={rule.isActive ? "Deactivate rule" : "Activate rule"}
+                    >
+                      {rule.isActive ? (
+                        <ToggleRight className="h-5 w-5 text-green-500" />
+                      ) : (
+                        <ToggleLeft className="h-5 w-5" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteRule(rule.id)}
+                      className={`transition-colors p-1 ${confirmDeleteId === rule.id ? "text-red-600 dark:text-red-400" : "text-gray-400 dark:text-zinc-500 hover:text-red-600"}`}
+                      title={confirmDeleteId === rule.id ? "Click again to confirm" : "Delete rule"}
+                    >
+                      {confirmDeleteId === rule.id ? (
+                        <span className="text-xs font-semibold">Confirm?</span>
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

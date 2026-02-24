@@ -23,6 +23,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { DiscountRulesClient } from "@/components/dashboard/discount-rules-client";
+import { EventEditForm } from "@/components/dashboard/event-edit-form";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +88,19 @@ export default async function EventOverviewPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <EventEditForm
+            eventId={eventId}
+            initialData={{
+              name: event.name,
+              venue: event.venue,
+              location: event.location,
+              checkIn: event.checkIn.toISOString(),
+              checkOut: event.checkOut.toISOString(),
+              type: event.type,
+              primaryColor: event.primaryColor,
+              secondaryColor: event.secondaryColor,
+            }}
+          />
           <EventOverviewActions slug={event.slug} eventId={eventId} currentStatus={event.status} eventName={event.name} />
           <Link href={`/event/${event.slug}`} target="_blank">
             <Button variant="outline" size="sm" className="gap-1.5">

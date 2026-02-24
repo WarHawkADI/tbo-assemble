@@ -21,9 +21,10 @@ export async function GET(request: Request) {
     if (status) where.status = status;
     if (group) where.group = group;
     if (search) {
+      const s = search.trim();
       where.OR = [
-        { name: { contains: search } },
-        { email: { contains: search } },
+        { name: { contains: s } },
+        { email: { contains: s } },
       ];
     }
 
@@ -116,6 +117,12 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
     }
 
+    // Check guest exists before updating
+    const existing = await prisma.guest.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "Guest not found" }, { status: 404 });
+    }
+
     const guest = await prisma.guest.update({
       where: { id },
       data: {
@@ -166,7 +173,7 @@ export async function DELETE(request: Request) {
     // Get guest info and bookings for cleanup before deletion
     const guest = await prisma.guest.findUnique({
       where: { id },
-      select: { name: true, eventId: true, bookings: { select: { id: true, roomBlockId: true } } },
+      select: { name: true, eventId: true, bookings: { select: { id: true, roomBlockId: true, status: true } } },
     });
 
     if (!guest) {
@@ -175,9 +182,9 @@ export async function DELETE(request: Request) {
 
     // Use transaction to decrement bookedQty, delete bookings, delete guest, and log
     await prisma.$transaction(async (tx) => {
-      // Decrement bookedQty for each room block the guest had booked
+      // Decrement bookedQty only for non-cancelled bookings (cancelled ones were already decremented)
       for (const booking of guest.bookings) {
-        if (booking.roomBlockId) {
+        if (booking.roomBlockId && booking.status !== "cancelled") {
           await tx.roomBlock.update({
             where: { id: booking.roomBlockId },
             data: { bookedQty: { decrement: 1 } },

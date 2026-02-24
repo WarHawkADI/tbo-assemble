@@ -315,19 +315,32 @@ export default function BookingClient({ event }: { event: EventData }) {
                   <p className="text-[10px] text-gray-400 dark:text-zinc-500 uppercase tracking-wider font-semibold mb-2">
                     Confirmation Email Preview
                   </p>
-                  <div className="bg-white dark:bg-zinc-900 rounded-lg p-4 border border-gray-100 dark:border-zinc-700">
-                    <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">To: {guestEmail || "your@email.com"}</p>
-                    <p className="text-xs font-semibold text-gray-800 dark:text-zinc-200 mb-2">
-                      Booking Confirmed — {event.name}
-                    </p>
-                    <p className="text-[11px] text-gray-600 dark:text-zinc-400 leading-relaxed">
-                      Dear {guestName},<br/><br/>
-                      Your room ({selectedRoomData?.roomType}) at {event.venue} has been confirmed for{" "}
-                      {new Date(event.checkIn).toLocaleDateString("en-IN")} –{" "}
-                      {new Date(event.checkOut).toLocaleDateString("en-IN")}.<br/><br/>
-                      Total: ₹{grandTotal.toLocaleString("en-IN")}<br/><br/>
-                      Show your QR code at the front desk during check-in.
-                    </p>
+                  <div className="bg-white dark:bg-zinc-900 rounded-lg p-4 border border-gray-100 dark:border-zinc-700 space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-zinc-700">
+                      <div className="h-6 w-6 rounded" style={{ backgroundColor: event.primaryColor }} />
+                      <span className="text-xs font-bold" style={{ color: event.primaryColor }}>{event.name}</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] text-gray-400 dark:text-zinc-500">To: {guestEmail || "your@email.com"}</p>
+                      <p className="text-xs font-semibold text-gray-800 dark:text-zinc-200">
+                        ✅ Booking Confirmed — {event.name}
+                      </p>
+                    </div>
+                    <div className="text-[11px] text-gray-600 dark:text-zinc-400 leading-relaxed space-y-2">
+                      <p>Dear {guestName},</p>
+                      <p>Your booking has been confirmed! Here are your details:</p>
+                      <div className="bg-gray-50 dark:bg-zinc-800 rounded-lg p-3 space-y-1.5">
+                        <p className="flex justify-between"><span className="text-gray-400">Room:</span> <span className="font-medium text-gray-700 dark:text-zinc-300">{selectedRoomData?.roomType}</span></p>
+                        <p className="flex justify-between"><span className="text-gray-400">Venue:</span> <span className="font-medium text-gray-700 dark:text-zinc-300">{event.venue}</span></p>
+                        <p className="flex justify-between"><span className="text-gray-400">Check-in:</span> <span className="font-medium text-gray-700 dark:text-zinc-300">{new Date(event.checkIn).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</span></p>
+                        <p className="flex justify-between"><span className="text-gray-400">Check-out:</span> <span className="font-medium text-gray-700 dark:text-zinc-300">{new Date(event.checkOut).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</span></p>
+                        <div className="border-t border-gray-200 dark:border-zinc-700 pt-1.5 mt-1.5">
+                          <p className="flex justify-between font-semibold"><span>Total Amount:</span> <span style={{ color: event.primaryColor }}>₹{grandTotal.toLocaleString("en-IN")}</span></p>
+                        </div>
+                      </div>
+                      <p>Show your QR code at the front desk during check-in. You can manage your booking or download your invoice anytime.</p>
+                      <p className="text-[10px] text-gray-400 dark:text-zinc-500 pt-1">Booking ID: {bookingId?.slice(0, 8)}... • Powered by TBO Assemble</p>
+                    </div>
                   </div>
                 </div>
               </div>

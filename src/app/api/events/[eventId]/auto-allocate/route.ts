@@ -71,6 +71,7 @@ export async function POST(
     const sortedZones = [...zones].sort((a, b) => b.floor.localeCompare(a.floor));
 
     const allocations: Record<string, { floor: string; wing: string }> = {};
+    const explanations: Record<string, string> = {};
 
     // Build a map for proximity lookups
     const guestNameToAllocation = new Map<string, { floor: string; wing: string }>();
@@ -103,6 +104,7 @@ export async function POST(
           );
           if (zone && zone.currentCount < zone.capacity) {
             allocations[guest.id] = { floor: zone.floor, wing: zone.wing };
+            explanations[guest.id] = `Proximity request honored — placed near "${guest.proximityRequest}" on Floor ${zone.floor}, ${zone.wing} Wing`;
             zone.currentCount++;
             guestNameToAllocation.set(guest.name.toLowerCase(), {
               floor: zone.floor,
@@ -122,6 +124,7 @@ export async function POST(
           );
           if (zone && zone.currentCount < zone.capacity) {
             allocations[guest.id] = { floor: zone.floor, wing: zone.wing };
+            explanations[guest.id] = `Group cohesion — kept with "${guest.group}" group on Floor ${zone.floor}, ${zone.wing} Wing`;
             zone.currentCount++;
             guestNameToAllocation.set(guest.name.toLowerCase(), {
               floor: zone.floor,
@@ -139,6 +142,12 @@ export async function POST(
         for (const zone of candidates) {
           if (zone.currentCount < zone.capacity) {
             allocations[guest.id] = { floor: zone.floor, wing: zone.wing };
+            const reason = isVIP
+              ? `VIP priority — assigned top floor (Floor ${zone.floor}, ${zone.wing} Wing)`
+              : guest.group
+                ? `New zone assigned for "${guest.group}" group — Floor ${zone.floor}, ${zone.wing} Wing`
+                : `Best available zone — Floor ${zone.floor}, ${zone.wing} Wing`;
+            explanations[guest.id] = reason;
             zone.currentCount++;
             guestNameToAllocation.set(guest.name.toLowerCase(), {
               floor: zone.floor,
@@ -154,16 +163,18 @@ export async function POST(
       }
     }
 
-    // Save allocations to database
-    for (const [guestId, alloc] of Object.entries(allocations)) {
-      await prisma.guest.update({
-        where: { id: guestId },
-        data: {
-          allocatedFloor: alloc.floor,
-          allocatedWing: alloc.wing,
-        },
-      });
-    }
+    // Save allocations to database in a single transaction
+    await prisma.$transaction(
+      Object.entries(allocations).map(([guestId, alloc]) =>
+        prisma.guest.update({
+          where: { id: guestId },
+          data: {
+            allocatedFloor: alloc.floor,
+            allocatedWing: alloc.wing,
+          },
+        })
+      )
+    );
 
     // Log activity
     await prisma.activityLog.create({
@@ -179,6 +190,7 @@ export async function POST(
       success: true,
       allocated: Object.keys(allocations).length,
       allocations,
+      explanations,
     });
   } catch (error) {
     console.error("Auto-allocate error:", error);

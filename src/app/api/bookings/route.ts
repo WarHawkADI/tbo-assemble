@@ -16,6 +16,11 @@ export async function POST(request: Request) {
       specialRequests,
     } = await request.json();
 
+    // Validate guestName is non-empty
+    if (!guestName || !guestName.trim()) {
+      return NextResponse.json({ error: "Guest name is required" }, { status: 400 });
+    }
+
     // Validate eventId exists and event is active/published
     const event = await prisma.event.findUnique({ where: { id: eventId } });
     if (!event || !["active", "published"].includes(event.status)) {
@@ -40,37 +45,20 @@ export async function POST(request: Request) {
       }
     }
 
-    // Check room availability
+    // Pre-validate room block exists
     const roomBlock = await prisma.roomBlock.findUnique({ where: { id: roomBlockId } });
-    if (!roomBlock || roomBlock.bookedQty >= roomBlock.totalQty) {
-      return NextResponse.json(
-        { error: "This room type is no longer available." },
-        { status: 400 }
-      );
+    if (!roomBlock) {
+      return NextResponse.json({ error: "Room type not found." }, { status: 400 });
     }
 
-    // Apply discount rules
-    const currentBookedCount = roomBlock.bookedQty + 1; // including this booking
-    const discountRules = await prisma.discountRule.findMany({
-      where: { eventId, isActive: true },
-      orderBy: { minRooms: "desc" },
-    });
-    const applicableRule = discountRules.find((r) => currentBookedCount >= r.minRooms);
-    const discountPct = applicableRule ? applicableRule.discountPct : 0;
-    const finalAmount = discountPct > 0
-      ? Math.round(totalAmount * (1 - discountPct / 100))
-      : totalAmount;
-
-    // Server-side price validation: verify totalAmount is reasonable
+    // Server-side price calculation: compute total from room rate + add-ons
     const nights = Math.ceil(
       (new Date(event.checkOut).getTime() - new Date(event.checkIn).getTime()) / (1000 * 60 * 60 * 24)
     );
-    const expectedBase = roomBlock.rate * nights;
-    if (totalAmount < 0 || totalAmount > expectedBase * 3) {
-      return NextResponse.json({ error: "Invalid total amount" }, { status: 400 });
-    }
+    const computedRoomTotal = roomBlock.rate * nights;
 
-    // Validate addOns belong to the event
+    // Calculate add-on total server-side
+    let computedAddOnTotal = 0;
     if (selectedAddOns && selectedAddOns.length > 0) {
       const validAddOns = await prisma.addOn.findMany({
         where: { id: { in: selectedAddOns }, eventId },
@@ -81,10 +69,31 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
+      computedAddOnTotal = validAddOns.reduce((sum, a) => sum + (a.isIncluded ? 0 : a.price), 0);
     }
 
-    // Wrap booking creation in a transaction
+    const serverComputedTotal = computedRoomTotal + computedAddOnTotal;
+
+    // Wrap booking creation in a transaction — availability check INSIDE to prevent race conditions
     const result = await prisma.$transaction(async (tx) => {
+      // Re-check room availability inside transaction (prevents double-booking)
+      const freshRoomBlock = await tx.roomBlock.findUnique({ where: { id: roomBlockId } });
+      if (!freshRoomBlock || freshRoomBlock.bookedQty >= freshRoomBlock.totalQty) {
+        throw new Error("SOLD_OUT");
+      }
+
+      // Apply discount rules inside transaction for accurate count
+      const currentBookedCount = freshRoomBlock.bookedQty + 1;
+      const discountRules = await tx.discountRule.findMany({
+        where: { eventId, isActive: true },
+        orderBy: { minRooms: "desc" },
+      });
+      const applicableRule = discountRules.find((r: { minRooms: number }) => currentBookedCount >= r.minRooms);
+      const discountPct = applicableRule ? applicableRule.discountPct : 0;
+      const finalAmount = discountPct > 0
+        ? Math.round(serverComputedTotal * (1 - discountPct / 100))
+        : serverComputedTotal;
+
       // Create guest (save specialRequests to notes)
       const guest = await tx.guest.create({
         data: {
@@ -138,12 +147,11 @@ export async function POST(request: Request) {
     });
 
     // Log activity
-    const discountNote = discountPct > 0 ? ` (${discountPct}% discount applied)` : "";
     await prisma.activityLog.create({
       data: {
         eventId,
         action: "booking_created",
-        details: `${guestName} booked ${result.booking.id.slice(0, 8)} — ₹${finalAmount.toLocaleString("en-IN")}${discountNote}`,
+        details: `${guestName} booked ${result.booking.id.slice(0, 8)} — ₹${result.booking.totalAmount.toLocaleString("en-IN")}`,
         actor: guestName,
       },
     });
@@ -153,9 +161,14 @@ export async function POST(request: Request) {
       booking: { id: result.booking.id },
       bookingId: result.booking.id,
       guestId: result.guest.id,
-      discount: discountPct > 0 ? { percent: discountPct, originalAmount: totalAmount, finalAmount } : null,
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message === "SOLD_OUT") {
+      return NextResponse.json(
+        { error: "This room type is no longer available." },
+        { status: 400 }
+      );
+    }
     console.error("Booking error:", error);
     return NextResponse.json({ error: "Failed to create booking" }, { status: 500 });
   }

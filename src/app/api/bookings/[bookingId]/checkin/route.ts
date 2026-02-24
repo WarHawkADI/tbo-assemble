@@ -45,6 +45,12 @@ export async function POST(
       include: { guest: true, roomBlock: true },
     });
 
+    // Update guest status to checked-in
+    await prisma.guest.update({
+      where: { id: booking.guest.id },
+      data: { status: "checked-in" },
+    });
+
     await prisma.activityLog.create({
       data: {
         eventId: booking.eventId,

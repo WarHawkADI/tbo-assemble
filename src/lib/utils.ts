@@ -61,7 +61,9 @@ export function getStatusColor(status: string): string {
 
 export function daysUntil(date: Date | string): number {
   const now = new Date();
+  now.setHours(0, 0, 0, 0);
   const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
   const diff = target.getTime() - now.getTime();
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }

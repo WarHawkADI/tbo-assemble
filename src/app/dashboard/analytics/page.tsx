@@ -40,7 +40,7 @@ export default async function AnalyticsPage() {
         (1000 * 60 * 60 * 24)
     );
     const revenue = event.roomBlocks.reduce(
-      (s, rb) => s + rb.bookings.length * rb.rate * nights,
+      (s, rb) => s + rb.bookings.filter((b: { status?: string }) => b.status !== "cancelled").length * rb.rate * nights,
       0
     );
 
