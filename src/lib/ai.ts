@@ -6,6 +6,7 @@
  */
 
 export interface ParsedContract {
+  // ── Core ────────────────────────────────────────────────────────────────────
   venue: string;
   location: string;
   checkIn: string;
@@ -13,6 +14,34 @@ export interface ParsedContract {
   eventName: string;
   eventType: string;
   clientName: string;
+
+  // ── Contract metadata ────────────────────────────────────────────────────────
+  contractNo?: string;
+  issueDate?: string;
+  validUntil?: string;
+  groupCode?: string;
+  gstin?: string;
+
+  // ── Headcount & duration ──────────────────────────────────────────────────────
+  expectedGuests?: number;
+  nights?: number;
+
+  // ── Financial ────────────────────────────────────────────────────────────────
+  totalAmount?: number;
+  currency?: string;
+  taxInfo?: string;
+  paymentTerms?: string;
+
+  // ── Contacts ─────────────────────────────────────────────────────────────────
+  hotelContact?: { name?: string; phone?: string; email?: string };
+  agentContact?: { name?: string; phone?: string; email?: string };
+  signatories?: string[];
+
+  // ── Policies ─────────────────────────────────────────────────────────────────
+  earlyCheckIn?: string;
+  lateCheckOut?: string;
+
+  // ── Structured arrays ────────────────────────────────────────────────────────
   rooms: {
     roomType: string;
     rate: number;
@@ -40,6 +69,13 @@ export interface ParsedInvite {
   secondaryColor: string;
   accentColor: string;
   description: string;
+  // Optional enriched fields extracted from the invite document
+  venue?: string;
+  location?: string;
+  checkIn?: string;
+  checkOut?: string;
+  nights?: number;
+  agentContact?: { name?: string; phone?: string; email?: string };
 }
 
 export function getDemoContractData(): ParsedContract {

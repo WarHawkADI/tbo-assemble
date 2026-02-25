@@ -26,10 +26,10 @@ export async function POST(request: Request) {
     const data = await request.json();
     const { contract, invite } = data;
 
-    // Date validation
-    const checkInDate = new Date(contract?.checkIn || Date.now());
-    const checkOutDate = new Date(contract?.checkOut || Date.now() + 3 * 86400000);
-    if (checkInDate >= checkOutDate) {
+    // Date validation — guard against empty strings which produce Invalid Date
+    const checkInDate = contract?.checkIn ? new Date(contract.checkIn) : new Date(Date.now());
+    const checkOutDate = contract?.checkOut ? new Date(contract.checkOut) : new Date(Date.now() + 3 * 86400000);
+    if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime()) || checkInDate >= checkOutDate) {
       return NextResponse.json({ error: "Check-in date must be before check-out date" }, { status: 400 });
     }
     const today = new Date();
@@ -75,8 +75,8 @@ export async function POST(request: Request) {
           type: invite?.eventType || contract?.eventType || "wedding",
           venue: contract?.venue || "Venue TBD",
           location: contract?.location || "Location TBD",
-          checkIn: new Date(contract?.checkIn || Date.now()),
-          checkOut: new Date(contract?.checkOut || Date.now() + 3 * 86400000),
+          checkIn: checkInDate,
+          checkOut: checkOutDate,
           description: invite?.description || "",
           primaryColor: invite?.primaryColor || "#1e40af",
           secondaryColor: invite?.secondaryColor || "#f0f9ff",
@@ -118,12 +118,22 @@ export async function POST(request: Request) {
         }
       }
 
-      // Create attrition rules
+      // Create attrition rules — compute releaseDate from description when not explicitly set
       if (contract?.attritionRules) {
         for (const rule of contract.attritionRules) {
+          let releaseDate: Date;
+          if (rule.releaseDate) {
+            releaseDate = new Date(rule.releaseDate);
+            if (isNaN(releaseDate.getTime())) continue; // skip truly invalid date strings
+          } else {
+            // Derive from description: "X days before/prior" relative to checkIn
+            const daysMatch = rule.description?.match(/(\d+)\s*days?\s*(?:before|prior|ahead)/i);
+            const daysOffset = daysMatch ? parseInt(daysMatch[1]) : 30;
+            releaseDate = new Date(checkInDate.getTime() - daysOffset * 86400000);
+          }
           await tx.attritionRule.create({
             data: {
-              releaseDate: new Date(rule.releaseDate),
+              releaseDate,
               releasePercent: rule.releasePercent,
               description: rule.description,
               eventId: event.id,

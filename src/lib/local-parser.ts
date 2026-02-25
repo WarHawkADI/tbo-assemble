@@ -19,6 +19,18 @@
 import type { ParsedContract, ParsedInvite } from "./ai";
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SHARED CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const MONTHS: Record<string, string> = {
+  january: "01", february: "02", march: "03", april: "04",
+  may: "05", june: "06", july: "07", august: "08",
+  september: "09", october: "10", november: "11", december: "12",
+  jan: "01", feb: "02", mar: "03", apr: "04",
+  jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // TEXT EXTRACTION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -52,12 +64,17 @@ function normalizeText(raw: string): string {
     .join("\n")
     .trim();
 
+  // Insert spaces between letters and numbers to separate merged tokens
+  text = text.replace(/([A-Za-z])(?=\d)/g, "$1 ");
+  text = text.replace(/(\d)(?=[A-Za-z])/g, "$1 ");
+
   // Collapse spaced-out decorative text: "D A T E" → "DATE", "V E N U E" → "VENUE"
   // Detects runs of single characters separated by single spaces (3+ chars)
   text = text.replace(
     /\b([A-Za-z])( [A-Za-z]){2,}\b/g,
     (match) => match.replace(/ /g, "")
   );
+
 
   return text;
 }
@@ -135,7 +152,7 @@ async function performOCR(imageBuffer: Buffer): Promise<string> {
  * Tries pdf-parse first. If too little text is extracted (<50 chars),
  * attempts to OCR embedded JPEG images from the PDF.
  */
-async function extractTextWithOCRFallback(
+export async function extractTextWithOCRFallback(
   buffer: Buffer
 ): Promise<{ text: string; usedOCR: boolean }> {
   let text = "";
@@ -391,7 +408,7 @@ interface TableRow {
  *
  * Returns parsed rows with a description field and an array of numbers.
  */
-function parseTableRows(text: string): TableRow[] {
+export function parseTableRows(text: string): TableRow[] {
   const rows: TableRow[] = [];
   const lines = text.split("\n");
 
@@ -462,12 +479,71 @@ function parseTableRows(text: string): TableRow[] {
     if (/^[-=_|+\s•]{3,}$/.test(line)) continue;
 
     // Try to parse this line as a table row
-    // Extract all number tokens from the line (numbers with optional commas and decimals)
-    const numberTokens = [...line.matchAll(/(?<!\S)([\d,]+(?:\.\d{1,2})?)(?!\S|[A-Za-z])/g)];
+    // Pre-process: replace parenthetical descriptors like "(150 pax)" or "(incl. taxes)" with a
+    // placeholder so their internal numbers don't get tokenized as column data.
+    // We keep track of actual positions by working on a sanitized copy.
+    const sanitizedLine = line.replace(/\(\s*\d+\s+[A-Za-z][A-Za-z .]+\)/g, (m) =>
+      " ".repeat(m.length)
+    );
+    // Extract all number tokens from the sanitized line (numbers with optional commas and decimals)
+    // Only match numbers preceded by whitespace/start-of-token (not letters or commas to avoid
+    // mid-word or mid-number matches).
+    let numberTokens = [...sanitizedLine.matchAll(/(?<![A-Za-z,])([\d,]+(?:\.\d{1,2})?)(?!\S|[A-Za-z])/g)];
 
     // Also try extracting numbers that are separated by at least one space from text
     // This handles "Deluxe Rooms 20 5,000 100,000"
     if (numberTokens.length === 0) continue;
+
+    // Handle concatenated numbers like "1150,000150,000" or "205,000100,000"
+    // (PDF table columns merged without space).
+    // Strategy: try every possible split point where the suffix matches two comma-formatted numbers.
+    // Prefer the split where qty × rate ≈ total (strongest signal for correct split).
+    if (numberTokens.length === 1) {
+      const rawNum = numberTokens[0][1]; // e.g., "1150,000150,000" or "205,000100,000"
+      let bestQty = 0, bestRate = 0, bestTotal = 0, bestScore = -1, found = false;
+      // Try all prefixes of length 1..5 as qty
+      for (let qtyLen = 1; qtyLen <= 5 && qtyLen < rawNum.length - 6; qtyLen++) {
+        const qtyStr = rawNum.substring(0, qtyLen);
+        const rest = rawNum.substring(qtyLen);
+        if (qtyStr.startsWith("0")) continue; // no leading zeros in qty
+        // rest must match two comma-number groups
+        const m = rest.match(/^(\d{1,4}(?:,\d{3})+)(\d{1,4}(?:,\d{3})+)$/);
+        if (m) {
+          const qty = parseInt(qtyStr);
+          const rate = parseInt(m[1].replace(/,/g, ""));
+          const total = parseInt(m[2].replace(/,/g, ""));
+          if (qty > 0 && rate > 0 && total > 0) {
+            // Score: perfect match = qty * rate === total
+            const score = qty * rate === total ? 2 : (Math.abs(qty * rate - total) / total < 0.5 ? 1 : 0);
+            if (score > bestScore) {
+              bestScore = score; bestQty = qty; bestRate = rate; bestTotal = total; found = true;
+            }
+          }
+        }
+      }
+      if (found) {
+        numberTokens = [
+          { 1: String(bestQty), index: numberTokens[0].index } as unknown as RegExpExecArray,
+          { 1: String(bestRate), index: numberTokens[0].index! + 1 } as unknown as RegExpExecArray,
+          { 1: String(bestTotal), index: numberTokens[0].index! + 2 } as unknown as RegExpExecArray,
+        ];
+      } else {
+        // Pattern B: two large comma-formatted numbers only (no qty column)
+        const concatB = rawNum.match(/^(\d{1,4}(?:,\d{3})+)(\d{1,4}(?:,\d{3})+)$/);
+        if (concatB) {
+          const n1 = parseInt(concatB[1].replace(/,/g, ""));
+          const n2 = parseInt(concatB[2].replace(/,/g, ""));
+          if (n1 > 0 && n2 > 0) {
+            numberTokens = [
+              { 1: String(n1), index: numberTokens[0].index } as unknown as RegExpExecArray,
+              { 1: String(n2), index: numberTokens[0].index! + 1 } as unknown as RegExpExecArray,
+            ];
+          }
+        }
+      }
+    }
+
+
 
     // Find where the first number starts
     const firstNumIdx = numberTokens[0].index!;
@@ -566,6 +642,17 @@ function interpretTableRow(numbers: number[]): { rate: number; quantity: number 
     // Two numbers: [qty, rate] or [rate, total]
     const [a, b] = numbers;
     if (a < 500 && b >= 500) {
+      // Guard against "205,000100,000" → [205, 100000] where "205" is really qty=20 + rate-prefix=5
+      // If a > 100, is NOT a round number (a%10 != 0), and b is divisible by floor(a/10):
+      if (a > 100 && a % 10 !== 0) {
+        const likelyQty = Math.floor(a / 10);
+        if (likelyQty >= 2 && b % likelyQty === 0) {
+          const likelyRate = b / likelyQty;
+          if (likelyRate >= 500 && likelyRate < b) {
+            return { rate: likelyRate, quantity: likelyQty };
+          }
+        }
+      }
       return { rate: b, quantity: a };
     }
     if (b < 500 && a >= 500) {
@@ -792,13 +879,47 @@ function extractLocation(
       .substring(0, 120);
   };
 
-  // Strategy 1: Labeled fields
+  // Strategy 1: Labeled fields – but skip bare street-number addresses that look
+  // like a guest's home address rather than a venue location.
+  // A "bare street address" has a leading number followed by a street name with no
+  // comma-separated city/state component (e.g. "456 Maple Street" or "123 Oak Ave").
+  const isBareStreetAddress = (s: string): boolean => {
+    // Must start with a digit, have only one segment (no comma separating city), and
+    // not contain any known city indicators.
+    return /^\d+\s+[A-Za-z]/.test(s) && !s.includes(",") && s.split(" ").length <= 4;
+  };
+
+  /**
+   * If the string looks like a full street address ("123 Street, City, Country"),
+   * extract just the city portion (second-to-last comma segment, trimmed).
+   */
+  const extractCityFromAddress = (s: string): string | null => {
+    if (!/^\d+\s+/.test(s)) return null; // must start with street number
+    const parts = s.split(",").map((p) => p.trim()).filter((p) => p.length > 0);
+    if (parts.length < 2) return null;
+    // City is typically the second part (index 1), or second-to-last before country
+    const cityCandidate = parts.length >= 3 ? parts[parts.length - 2] : parts[1];
+    // Should be a plain word or two (not a street: no digits, reasonable length)
+    if (/^\d/.test(cityCandidate) || cityCandidate.length > 40) return null;
+    return cityCandidate;
+  };
+
   const locationFieldKeys = [
-    "address", "location", "city", "place", "situated at", "located at",
+    "hotel address", "venue address", "property address",
+    "location", "city", "place", "situated at", "located at",
+    "address",   // lowest priority – skip if it looks like a personal street address
   ];
   for (const key of locationFieldKeys) {
     if (fields[key] && fields[key].length >= 3) {
-      return cleanLocation(fields[key]);
+      const clean = cleanLocation(fields[key]);
+      // Skip plain street addresses (e.g. "456 Maple Street") – no city component
+      if ((key === "address" || key === "location") && isBareStreetAddress(clean)) {
+        continue;
+      }
+      // If address is a full street address ("123 Blvd, City, Country"), extract just the city
+      const cityFromAddr = extractCityFromAddress(clean);
+      if (cityFromAddr) return cityFromAddr;
+      return clean;
     }
   }
 
@@ -809,10 +930,14 @@ function extractLocation(
   for (const pattern of labelPatterns) {
     const match = text.match(pattern);
     if (match?.[1]) {
-      return cleanLocation(match[1].trim().replace(/[.]$/, ""));
+      const candidate = cleanLocation(match[1].trim().replace(/[.]$/, ""));
+      // If address is a full street address, extract just the city
+      const cityFromAddr2 = extractCityFromAddress(candidate);
+      if (cityFromAddr2) return cityFromAddr2;
+      // Skip plain street addresses (e.g. "456 Maple Street") – no city component
+      if (!isBareStreetAddress(candidate)) return candidate;
     }
   }
-
   // Strategy 3: "in [City]" or "at [City]" patterns
   const inAtMatch = text.match(
     /(?:\bin\b|\bat\b)\s+([A-Z][a-z]+(?:,\s*[A-Z][A-Za-z\s]+)?)/
@@ -878,13 +1003,7 @@ function extractDates(
   text: string,
   fields: Record<string, string>
 ): [string, string] {
-  const months: Record<string, string> = {
-    january: "01", february: "02", march: "03", april: "04",
-    may: "05", june: "06", july: "07", august: "08",
-    september: "09", october: "10", november: "11", december: "12",
-    jan: "01", feb: "02", mar: "03", apr: "04",
-    jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
-  };
+  const months = MONTHS;
   const monthNames = Object.keys(months).join("|");
 
   // ─── Strategy 1: Labeled fields (highest confidence) ───
@@ -1116,23 +1235,312 @@ function parseDateFromString(
 
 /** Try to normalize various date string formats to YYYY-MM-DD */
 function normalizeDateString(dateStr: string): string {
-  const months: Record<string, string> = {
-    january: "01", february: "02", march: "03", april: "04",
-    may: "05", june: "06", july: "07", august: "08",
-    september: "09", october: "10", november: "11", december: "12",
-    jan: "01", feb: "02", mar: "03", apr: "04",
-    jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
-  };
-
-  const result = parseDateFromString(dateStr, months);
+  const result = parseDateFromString(dateStr, MONTHS);
   return result || dateStr;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXTENDED CONTRACT FIELD EXTRACTORS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Extract contract / booking reference number. */
+function extractContractNo(text: string, fields: Record<string, string>): string {
+  for (const k of ["contract no", "contract number", "contract ref", "contract id", "booking ref", "booking no", "ref no", "reference no", "reference number", "voucher no"]) {
+    if (fields[k]) return fields[k].trim();
+  }
+  const m = text.match(/(?:contract\s*(?:no\.?|number|#|ref(?:erence)?))\s*[:=]?\s*([A-Z0-9\-\/]+)/i);
+  if (m) return m[1].trim();
+  return "";
+}
+
+/** Extract contract issue date as YYYY-MM-DD. */
+function extractIssueDate(text: string, fields: Record<string, string>): string {
+  for (const k of ["date of issue", "issue date", "issued on", "issued date", "date issued", "date"]) {
+    if (fields[k]) {
+      const p = parseDateFromString(fields[k], MONTHS);
+      if (p) return p;
+    }
+  }
+  const m = text.match(/(?:date\s*of\s*issue|issued?\s*(?:on|date)?)\s*[:=]?\s*([\w\s,]+?\d{4})/i);
+  if (m) { const p = parseDateFromString(m[1].trim(), MONTHS); if (p) return p; }
+  return "";
+}
+
+/** Extract "valid until" date as YYYY-MM-DD. */
+function extractValidUntil(text: string, fields: Record<string, string>): string {
+  for (const k of ["valid until", "validity", "expiry date", "expiry", "valid through", "valid till", "offer valid"]) {
+    if (fields[k]) {
+      const p = parseDateFromString(fields[k], MONTHS);
+      if (p) return p;
+    }
+  }
+  const m = text.match(/(?:valid\s*(?:until|through|till|upto?)|expiry?)\s*[:=]?\s*([\w\s,]+?\d{4})/i);
+  if (m) { const p = parseDateFromString(m[1].trim(), MONTHS); if (p) return p; }
+  return "";
+}
+
+/** Extract expected / total guest count (takes upper bound of ranges). */
+function extractExpectedGuests(text: string, fields: Record<string, string>): number {
+  for (const k of ["expected guests", "guest count", "total guests", "number of guests", "no of guests", "no. of guests", "pax", "expected pax", "total pax", "attendees", "delegates"]) {
+    if (fields[k]) {
+      const fv = fields[k];
+      // If the field has a range like "120 – 150", take the max (upper bound)
+      const rangeM = fv.match(/(\d+)\s*[–\-to]+\s*(\d+)/);
+      if (rangeM) { const n = parseInt(rangeM[2]); if (n > 0) return n; }
+      // Otherwise parse the first run of digits only
+      const firstNum = fv.match(/(\d+)/);
+      if (firstNum) { const n = parseInt(firstNum[1]); if (n > 0) return n; }
+    }
+  }
+  // Range "120 – 150 guests" → take max
+  const range = text.match(/(\d+)\s*[–\-to–]+\s*(\d+)\s*(?:guests?|pax|person|people|attendee|delegate)/i);
+  if (range) return parseInt(range[2]);
+  // "150 pax" / "150 guests"
+  const single = text.match(/(\d{2,4})\s*(?:guests?|pax|persons?|people|attendees?|delegates?)/i);
+  if (single) { const n = parseInt(single[1]); if (n > 0 && n < 100000) return n; }
+  return 0;
+}
+
+/** Extract number of nights ("3 Nights / 4 Days", "3-night block"). */
+function extractNights(text: string, fields: Record<string, string>): number {
+  for (const k of ["nights", "no of nights", "number of nights", "duration", "length of stay", "los"]) {
+    if (fields[k]) {
+      const m = fields[k].match(/(\d+)\s*nights?/i);
+      if (m) return parseInt(m[1]);
+      // Prefer nights from "X Days / Y Nights" format before bare integer parse
+      const mDaysNights = fields[k].match(/\d+\s*days?\s*[\/\\]\s*(\d+)\s*nights?/i);
+      if (mDaysNights) return parseInt(mDaysNights[1]);
+      const n = parseInt(fields[k].replace(/[^\d]/g, ""));
+      if (n > 0 && n < 90) return n;
+    }
+  }
+  // "3 Nights / 4 Days" format
+  const m = text.match(/(\d+)\s*nights?\s*(?:\/|\\)\s*\d+\s*days?/i);
+  if (m) return parseInt(m[1]);
+  // "4 Days / 3 Nights" reversed format
+  const mReversed = text.match(/\d+\s*days?\s*(?:\/|\\)\s*(\d+)\s*nights?/i);
+  if (mReversed) return parseInt(mReversed[1]);
+  const m2 = text.match(/(\d+)-night\s*(?:block|stay|package)/i);
+  if (m2) return parseInt(m2[1]);
+  const m3 = text.match(/duration\s*[:=]?\s*(\d+)\s*nights?/i);
+  if (m3) return parseInt(m3[1]);
+  return 0;
+}
+
+/** Extract total contract value. */
+function extractTotalAmount(text: string, fields: Record<string, string>): number {
+  // Highest priority: "X-Night Block Value" / "X-Night Total Value" fields (actual totals, not per-night rates)
+  for (const k of Object.keys(fields)) {
+    if (/\d+[\s-]*night/.test(k) && /(?:block|total)\s*value|total\s*(?:block|amount)/.test(k)) {
+      const n = parseInt(fields[k].replace(/[^0-9]/g, ""));
+      if (n > 0) return n;
+    }
+  }
+  // Also search text for "X-Night Block Value: amount" pattern
+  const mMultiNight = text.match(/\d+[\s-]*night\s*(?:block\s*)?(?:value|total|amount)\s*[:=]?\s*[₹$€£]?\s*([\d,]+)/i);
+  if (mMultiNight) return parseInt(mMultiNight[1].replace(/,/g, ""));
+
+  // Standard labeled fields — skip per-night annotated values
+  for (const k of ["total amount", "total", "grand total", "total block value", "total value", "total cost", "total price", "net total", "invoice total"]) {
+    if (fields[k]) {
+      if (/per\s*night/i.test(fields[k])) continue; // skip per-night rate fields
+      const n = parseInt(fields[k].replace(/[^0-9]/g, ""));
+      if (n > 0) return n;
+    }
+  }
+  // Fallback: regex on text (skip per-night inline values)
+  const mAll = [...text.matchAll(/(?:total\s*(?:block\s*)?(?:amount|value|price|cost|invoice|charges?))\s*[:=]?\s*[₹$€£]?\s*([\d,]+)/gi)];
+  for (const m of mAll) {
+    // Check 30 chars after match for "per night" qualifier
+    const after = text.substring(m.index! + m[0].length, m.index! + m[0].length + 30);
+    if (/per\s*night/i.test(after)) continue;
+    return parseInt(m[1].replace(/,/g, ""));
+  }
+  const m2 = text.match(/[₹$€£]\s*([\d,]+)\s*(?:total|grand\s*total)/i);
+  if (m2) return parseInt(m2[1].replace(/,/g, ""));
+  return 0;
+}
+
+/** Detect currency from text symbols / keywords. */
+function extractCurrency(text: string): string {
+  if (/₹|inr|indian rupee|rs\./i.test(text)) return "INR";
+  if (/\$|usd|us dollar/i.test(text)) return "USD";
+  if (/€|eur\b|euro/i.test(text)) return "EUR";
+  if (/£|gbp|pound/i.test(text)) return "GBP";
+  return "";
+}
+
+/** Extract tax / GST information string. */
+function extractTaxInfo(text: string): string {
+  // Use \b word boundaries so we don't match "vat" inside "reservation" etc.
+  const m = text.match(/\b((?:gst|vat|tax|cess|service\s*charge)[^.\n]{0,120})/i);
+  if (m) return m[1].replace(/\s+/g, " ").trim().substring(0, 150);
+  return "";
+}
+
+/** Extract GSTIN in standard Indian format. */
+function extractGSTIN(text: string, fields: Record<string, string>): string {
+  for (const k of ["gstin", "gst number", "gst no", "gstin number"]) {
+    if (fields[k]) return fields[k].trim();
+  }
+  // Find the GSTIN label, then grab the next ~30 chars, strip ALL whitespace
+  // so we handle values split across lines (e.g. "GSTIN: 08AABCG\n1234H1ZP")
+  const labelM = text.match(/(?:gstin|gst\s*(?:no\.?|number|in))\s*[:=]?\s*([\s\S]{1,35})/i);
+  if (labelM) {
+    const candidate = labelM[1].replace(/\s/g, "").toUpperCase().substring(0, 15);
+    // Standard 15-char GSTIN: 2 digits + 5 letters + 4 digits + 1 letter + 1 digit + Z + 1 alphanum
+    if (/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9]Z[A-Z0-9]$/.test(candidate)) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
+/** Extract group / booking code shown on contract. */
+function extractGroupCode(text: string, fields: Record<string, string>): string {
+  for (const k of ["group code", "booking code", "group id", "event code", "promo code", "block code"]) {
+    if (fields[k]) return fields[k].trim();
+  }
+  const m = text.match(/(?:group|booking|event|block)\s*code\s*[:=]?\s*([A-Z0-9\-\/]{3,30})/i);
+  if (m) return m[1].trim();
+  return "";
+}
+
+/** Extract advance payment terms string. */
+function extractPaymentTerms(text: string, fields: Record<string, string>): string {
+  for (const k of ["payment terms", "payment", "advance payment", "billing terms"]) {
+    if (fields[k]) return fields[k].trim().substring(0, 200);
+  }
+  const m = text.match(/(\d+%\s*advance\s*(?:payment|deposit)[^.]*\.)/i);
+  if (m) return m[1].trim();
+  const m2 = text.match(/(?:payment\s*terms?|billing)\s*[:=]?\s*([^.\n]{10,200}\.)/i);
+  if (m2) return m2[1].trim();
+  return "";
+}
+
+/** Extract early check-in policy string. */
+function extractEarlyCheckIn(text: string): string {
+  const m = text.match(/early\s*check[-\s]*in[^.]{0,150}\./i);
+  if (m) return m[0].trim();
+  return "";
+}
+
+/** Extract late check-out policy string. */
+function extractLateCheckOut(text: string): string {
+  const m = text.match(/late\s*check[-\s]*out[^.]{0,150}\./i);
+  if (m) return m[0].trim();
+  return "";
+}
+
+/** Extract hotel contact details (name, phone, email). */
+function extractHotelContact(text: string, fields: Record<string, string>): ParsedContract["hotelContact"] {
+  const result: NonNullable<ParsedContract["hotelContact"]> = {};
+
+  // Labeled fields
+  for (const k of ["hotel contact", "hotel email", "contact email", "email"]) {
+    if (fields[k] && /[@]/.test(fields[k])) { result.email = fields[k].trim(); break; }
+  }
+  for (const k of ["hotel phone", "hotel contact", "contact", "tel", "telephone", "phone"]) {
+    if (fields[k] && /\d{7,}/.test(fields[k])) { result.phone = fields[k].trim(); break; }
+  }
+
+  // Look for hotel representative / DOSm block in text — title then name
+  const hotelRepMatch = text.match(
+    /(?:director\s*of\s*sales|hotel\s*representative|sales\s*manager|gm|general\s*manager|reservations\s*manager|revenue\s*manager|catering\s*manager|banquet\s*manager|front\s*office\s*manager)\s*\n?([A-Z][a-z]+(?: [A-Z][a-z]+)+)/i
+  );
+  if (hotelRepMatch) result.name = hotelRepMatch[1].trim();
+
+  // Also handle "Name\nTitle" format (name appears before the title)
+  if (!result.name) {
+    const nameFirstMatch = text.match(
+      /([A-Z][a-z]+(?: [A-Z][a-z]+){1,4})\n\s*(?:director\s*of\s*sales|hotel\s*representative|sales\s*manager|gm|general\s*manager|reservations\s*manager|revenue\s*manager|catering\s*manager|banquet\s*manager|front\s*office\s*manager)/i
+    );
+    if (nameFirstMatch) {
+      const n = nameFirstMatch[1].trim();
+      // Exclude section titles / generic words
+      const excluded = /^(?:authorized|hotel|guest|client|company|dear|signature|representative|date|property|terms)/i;
+      if (!excluded.test(n)) result.name = n;
+    }
+  }
+
+  // Email from text (prefer hotel domain)
+  if (!result.email) {
+    const emailMatch = text.match(/([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/);
+    if (emailMatch) result.email = emailMatch[1];
+  }
+  // Phone from text
+  if (!result.phone) {
+    const phoneMatch = text.match(/(?:tel|phone|ph|contact)\s*[:=]?\s*(\+?[\d\s()\-]{7,20})/i);
+    if (phoneMatch) result.phone = phoneMatch[1].trim();
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/** Extract agent / coordinating travel agent contact. */
+function extractAgentContact(text: string, fields: Record<string, string>): ParsedContract["agentContact"] {
+  const result: NonNullable<ParsedContract["agentContact"]> = {};
+
+  // Common label: "Coordinating Agent: Rajesh Kumar · TBO Travel Solutions · +91 98765 43210"
+  // Also handle "contact\nRajesh Kumar · TBO Travel Solutions · +91 …" (invitation style)
+  const agentLine = text.match(
+    /(?:coordinating\s*agent|travel\s*agent|booking\s*agent|agent|contact)\s*\n?\s*([A-Z][a-z]+(?: [A-Z][a-z]+)+ [·\-] [^\n]{5,120})/i
+  ) || text.match(
+    /(?:coordinating\s*agent|travel\s*agent|booking\s*agent|agent)\s*\n?\s*([^\n]{5,120})/i
+  );
+  if (agentLine) {
+    const line = agentLine[1];
+    // Name is the first proper-name component before ·, comma, or @
+    const nameM = line.match(/^([A-Z][a-z]+(?: [A-Z][a-z]+)*)/);
+    if (nameM) result.name = nameM[1].trim();
+    const phoneM = line.match(/(\+?[\d\s()\-]{7,20})/);
+    if (phoneM) result.phone = phoneM[1].trim();
+    const emailM = line.match(/([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/);
+    if (emailM) result.email = emailM[1];
+  }
+
+  // If still empty, look for a bullet-separated name · company · phone line
+  // e.g. "Rajesh Kumar · TBO Travel Solutions · +91 98765 43210"
+  if (!result.name) {
+    const bulletLine = text.match(/([A-Z][a-z]+(?: [A-Z][a-z]+)+)\s*[·•]\s*[A-Z][A-Za-z\s]+[·•]\s*(\+?[\d\s]{8,20})/);
+    if (bulletLine) {
+      result.name = bulletLine[1].trim();
+      result.phone = bulletLine[2].trim();
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/** Extract signatory names near signature blocks. */
+function extractSignatories(text: string): string[] {
+  const names: string[] = [];
+  // Exclude section headers and generic labels that match name patterns
+  const EXCLUDED_SIGNATORIES = /^(?:for\s*the|authorized|hotel|guest|client|company|signature|director|manager|title|date|representative|delegated|signed|print|name)$/i;
+  // Look for names after "Signature:" or "For the hotel/guest/client:" or near Date/Title lines
+  const patterns = [
+    /(?:for\s*the\s*(?:guest|hotel|client|company)[:=\s]*)\n?\s*(?!for\s+the\b)([A-Z][a-z]+(?: [A-Z][a-z]+)+)/gi,
+    /(?:signature\s*[:=]?\s*I?\s*)([A-Z][a-z]+(?: [A-Z][a-z]+)+)/gi,
+    /(?:title\s*[:=]?.{0,30}\n)([A-Z][a-z]+(?: [A-Z][a-z]+)+)/gi,
+  ];
+  for (const p of patterns) {
+    let m;
+    p.lastIndex = 0;
+    while ((m = p.exec(text)) !== null) {
+      const name = m[1].trim();
+      if (name.length > 3 && name.length < 60 && !names.includes(name) && !EXCLUDED_SIGNATORIES.test(name)) {
+        names.push(name);
+      }
+    }
+  }
+  return names;
 }
 
 /**
  * Extract room types with rates and quantities from text.
  * Multi-strategy: table parsing → named room types → generic row extraction.
  */
-function extractRooms(
+export function extractRooms(
   text: string,
   tableRows: TableRow[]
 ): ParsedContract["rooms"] {
@@ -1190,13 +1598,19 @@ function extractRooms(
       "Twin Room", "Twin Rooms", "Twin Sharing",
       "Double Room", "Double Rooms", "Double Occupancy",
       "Single Room", "Single Rooms", "Single Occupancy",
-      "King Room", "King Rooms", "King Bed",
-      "Queen Room", "Queen Rooms", "Queen Bed",
+      "King Room", "King Rooms",
+      // removed "King Bed" (descriptive attribute)
+      "Queen Room", "Queen Rooms",
+      // removed "Queen Bed"
       "Club Room", "Club Rooms", "Club Suite",
-      "Garden Room", "Garden View",
-      "Ocean Suite", "Ocean View", "Sea View",
-      "Lake View Room", "Lake View",
+      "Garden Room",
+      // views and beds are descriptive, skip
+      // "Garden View",
+      "Ocean Suite",
+      // "Ocean View", "Sea View",
+      // "Lake View Room", "Lake View",
       "Mountain View", "Valley View", "Pool View", "City View",
+      
       // Bare keywords (lower priority)
       "Deluxe", "Suite", "Superior", "Executive", "Premier", "Premium",
     ];
@@ -1208,9 +1622,18 @@ function extractRooms(
       const idx = lower.indexOf(roomLower);
       if (idx === -1) continue;
 
-      const normalizedType = roomType.replace(/\s+/g, " ").trim();
+      let normalizedType = roomType.replace(/\s+/g, " ").trim();
+      // skip obvious descriptive phrases that are not room categories
+      const descriptiveBlacklist = [
+        "king bed", "lake view", "ocean view", "sea view", "garden view",
+        "panoramic view", "separate lounge", "butler service",
+      ];
+      if (descriptiveBlacklist.some(b => roomLower.includes(b))) {
+        continue;
+      }
+
       if (seen.has(normalizedType.toLowerCase())) continue;
-      // If this is a bare keyword, check if there's a more specific match
+      // If this is a bare keyword, check if there's a more specific match already added
       if (roomType.split(" ").length === 1) {
         const hasSpecific = [...seen].some((s) => s.includes(roomLower));
         if (hasSpecific) continue;
@@ -1223,12 +1646,21 @@ function extractRooms(
         lineStart >= 0 ? lineStart + 1 : 0,
         lineEnd >= 0 ? lineEnd : text.length
       );
+      // expand bare keyword using context in same line
+      if (roomType.split(" ").length === 1) {
+        const extraMatch = line.match(new RegExp(`([A-Z][A-Za-z& ]+)\\s+${roomType}`));
+        if (extraMatch) {
+          normalizedType = `${extraMatch[1]} ${roomType}`.trim();
+        }
+      }
 
       // Also get broader context for labeled patterns
-      const context = text.substring(
+      let context = text.substring(
         idx,
         Math.min(text.length, idx + 800)
       );
+      // fix concatenated numbers within context as well
+      context = context.replace(/,(\d{3})(?=\d)/g, ", $1");
       const beforeContext = text.substring(Math.max(0, idx - 200), idx);
 
       // Extract rate — try line-level numbers first, then broader context
@@ -1236,8 +1668,10 @@ function extractRooms(
       let quantity = 0;
 
       // Try to extract numbers from the same line (table-like)
+      // first sanitize merged numbers like "205,000100,000" → "205,000 100,000"
+      const sanitizedLine = line.replace(/,(\d{3})(?=\d)/g, ", $1");
       const lineNumbers = [
-        ...line.matchAll(/([\d,]+(?:\.\d{1,2})?)/g),
+        ...sanitizedLine.matchAll(/([\d,]+(?:\.\d{1,2})?)/g),
       ]
         .map((matchArr) => parseFloat(matchArr[1].replace(/,/g, "")))
         .filter((n) => n > 0);
@@ -1265,12 +1699,13 @@ function extractRooms(
           }
         }
 
-        // Extract quantity from NEARBY context only (300 chars)
-        // Using full 800-char context can pick up "50 rooms" from "Total Protected Inventory" summary text
-        const qtyContext = text.substring(idx, Math.min(text.length, idx + 300));
+        // Extract quantity from NEARBY context only (150 chars)
+        // Smaller window reduces false matches from subsequent rows (e.g., "150 pax" in catering)
+        let qtyContext = text.substring(idx, Math.min(text.length, idx + 150));
+        qtyContext = qtyContext.replace(/,(\d{3})(?=\d)/g, ", $1");
         const qtyPatterns = [
           /(?:qty|quantity)\s*[:=]?\s*(\d+)/i,
-          /(\d+)\s*(?:rooms?|units?|nos\.?|keys|pax)/i,
+          /(\d+)\s*(?:rooms?|units?|nos\.?|keys)/i, // exclude pax
           /(?:rooms?|units?|nos?\.?|count|block|blocked|allocated)\s*[:=]?\s*(\d+)/i,
           /(?:x|×)\s*(\d+)/i,
           /(\d+)\s*(?:x|×)/i,
@@ -1295,9 +1730,11 @@ function extractRooms(
       // Extract floor
       let floor = "";
       const floorMatch = context.match(
-        /(?:floor|level|storey)\s*[:=]?\s*([A-Za-z0-9\-–]+)/i
+        /(?:floor|levels?|level|storey|storeys?)s?\s*[:=]?\s*([A-Za-z0-9\-–]+)/i
       );
-      if (floorMatch) floor = floorMatch[1];
+      if (floorMatch) {
+        if (!/^s$/i.test(floorMatch[1])) floor = floorMatch[1];
+      }
 
       // Extract wing
       let wing = "";
@@ -1305,6 +1742,21 @@ function extractRooms(
         /(?:wing|tower|block|building)\s*[:=]?\s*([A-Za-z\s]+?)(?:\s*[,.\n|]|$)/i
       );
       if (wingMatch) wing = wingMatch[1].trim();
+      // Fallback: if we only captured the word "Wing" (e.g. "Tower Wing" → captured "wing")
+      // look only within the room's own context, not the entire document.
+      // Prefer a wing that appears alone on its own line (table cell), not embedded mid-sentence.
+      if (!wing || /^Wing$/i.test(wing)) {
+        // First try: "[Word] Wing" that appears at the start of a line (standalone table cell)
+        const standaloneLine = context.match(/(?:^|\n)\s*([A-Za-z]+)\s+Wing\s*(?:\n|$)/m);
+        if (standaloneLine) {
+          wing = standaloneLine[1];
+        } else {
+          // Second try: any "[Word] Wing" in context, but only if it's after the floor/qty area
+          // (skip "Heritage palace wing" in description by requiring uppercase start)
+          const ctxWing = context.match(/\b([A-Z][a-z]+)\s+Wing\b/);
+          if (ctxWing) wing = ctxWing[1];
+        }
+      }
 
       // Extract hotel name (for multi-property contracts)
       let hotelName = "";
@@ -1313,15 +1765,20 @@ function extractRooms(
       );
       if (hotelMatch) hotelName = hotelMatch[1].trim();
 
-      seen.add(normalizedType.toLowerCase());
-      rooms.push({
-        roomType: normalizedType,
-        rate: rate || 0,
-        quantity: quantity || 1,
-        floor: floor || undefined,
-        wing: wing || undefined,
-        hotelName: hotelName || undefined,
-      });
+      // avoid near-duplicate names (e.g. "Deluxe Room" vs "Deluxe Rooms")
+      const normLower = normalizedType.toLowerCase();
+      const dup = [...seen].some((s) => s.includes(normLower) || normLower.includes(s));
+      if (!dup) {
+        seen.add(normLower);
+        rooms.push({
+          roomType: normalizedType,
+          rate: rate || 0,
+          quantity: quantity || 1,
+          floor: floor || undefined,
+          wing: wing || undefined,
+          hotelName: hotelName || undefined,
+        });
+      }
     }
   }
 
@@ -1399,12 +1856,28 @@ function extractRooms(
  * Extract add-ons, services, and inclusions from text.
  * Uses both keyword matching and table data.
  */
-function extractAddOns(
+export function extractAddOns(
   text: string,
   tableRows: TableRow[]
 ): ParsedContract["addOns"] {
   const addOns: ParsedContract["addOns"] = [];
   const seen = new Set<string>();
+  const sanitizeName = (n: string) => n
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\s*\d+$/g, "")
+    .trim();
+
+  /** Returns true if this name looks like noise (file path, date fragment, URL, etc.) */
+  const isJunkName = (n: string): boolean => {
+    if (n.length < 3) return true;
+    if (/^file:\/\//i.test(n)) return true;           // file:/// URL
+    if (/^https?:\/\//i.test(n)) return true;          // http/https URL
+    if (/^\d+\/\d+/.test(n)) return true;              // date fragment like "2/22/"
+    if (n.includes("\\") || n.includes("%20")) return true; // encoded path
+    if (/^[^A-Za-z]{4,}/.test(n)) return true;        // starts with 4+ non-letters
+    return false;
+  };
 
   // ── Strategy 1: Table rows that look like services (not rooms) ──
   for (const row of tableRows) {
@@ -1445,10 +1918,13 @@ function extractAddOns(
         );
       if (isDefinitelyRoom) continue;
 
-      seen.add(desc.toLowerCase());
+      const clean = sanitizeName(desc);
+      if (seen.has(clean.toLowerCase())) continue;
+      if (isJunkName(clean)) continue;
+      seen.add(clean.toLowerCase());
       const { rate } = interpretTableRow(row.numbers);
       addOns.push({
-        name: desc,
+        name: clean,
         price: rate || 0,
         isIncluded: false,
       });
@@ -1456,6 +1932,9 @@ function extractAddOns(
   }
 
   // ── Strategy 2: Keyword-based pattern matching ──
+  // Build a lookup of all descriptions already captured in strategy 1 (for dedup)
+  const tableAddOnNames = addOns.map((a) => a.name.toLowerCase());
+
   const addOnPatterns = [
     { pattern: /airport\s*(?:pickup|transfer|drop|shuttle)/i, name: "Airport Transfer" },
     { pattern: /welcome\s*(?:dinner|drink|cocktail|reception)/i, name: "Welcome Dinner" },
@@ -1494,12 +1973,11 @@ function extractAddOns(
 
   for (const { pattern, name } of addOnPatterns) {
     if (seen.has(name.toLowerCase()) || seen.has(name)) continue;
+    // Also skip if the strategy-1 table rows already captured a fuller version of this item
+    if (tableAddOnNames.some((n) => n.includes(name.toLowerCase()))) continue;
 
     const match = lower.match(pattern);
     if (match) {
-      seen.add(name.toLowerCase());
-      seen.add(name);
-
       // Get line-scoped context for this add-on
       const idx = lower.indexOf(match[0]);
       const lineStart = lower.lastIndexOf("\n", idx);
@@ -1538,7 +2016,12 @@ function extractAddOns(
         }
       }
 
-      addOns.push({ name, price: isIncluded ? 0 : price, isIncluded });
+      const clean = sanitizeName(name);
+      if (!seen.has(clean.toLowerCase()) && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        seen.add(clean.toLowerCase());
+        addOns.push({ name: clean, price: isIncluded ? 0 : price, isIncluded });
+      }
     }
   }
 
@@ -1670,18 +2153,8 @@ function extractAttritionRules(
     }
   }
 
-  // Pattern 9: "X% advance payment" — extract payment terms too
-  if (rules.length === 0) {
-    const advancePattern =
-      /(\d+)\s*%\s*(?:advance|upfront|down)\s*(?:payment|deposit)/gi;
-    while ((m = advancePattern.exec(searchText)) !== null) {
-      rules.push({
-        releaseDate: "",
-        releasePercent: parseInt(m[1]),
-        description: `${parseInt(m[1])}% advance payment required`,
-      });
-    }
-  }
+  // NOTE: Pattern 9 (advance payment) removed — advance payment is NOT an attrition rule.
+  // It is captured separately by extractPaymentTerms.
 
   return rules;
 }
@@ -1732,6 +2205,25 @@ function extractClientName(
       if (name.length >= 3) return name.substring(0, 80);
     }
   }
+
+  // Strategy 4: For wedding/family events, extract from event name
+  // e.g., "The Sharma-Patel Wedding" → "Sharma-Patel Families"
+  const eventNameFromText =
+    fields["event name"] ||
+    fields["function name"] ||
+    text.match(/([A-Z][a-z]+(?:\s*[-&]\s*[A-Z][a-z]+)+)\s+Wedding/)?.[1] || "";
+  if (eventNameFromText) {
+    const familyM = eventNameFromText.match(
+      /([A-Z][a-z]+(?:\s*[-&]\s*[A-Z][a-z]+)*)\s+(?:Wedding|Marriage|Shaadi)/i
+    );
+    if (familyM) return familyM[1].trim() + " Families";
+  }
+
+  // Strategy 5: "X Families" or "X and Y Family"
+  const familyLineMatch = text.match(
+    /([A-Z][a-z]+(?:\s*(?:&|and)\s*[A-Z][a-z]+)*)\s+Famil(?:y|ies)/i
+  );
+  if (familyLineMatch) return familyLineMatch[1].trim() + " Families";
 
   return "";
 }
@@ -1925,20 +2417,50 @@ export async function parseContractLocally(
   // Parse table data
   const tableRows = parseTableRows(text);
 
-  // Extract structured data using all strategies
+  // ── Core fields ────────────────────────────────────────────────────────────
   const venue = extractVenue(text, fields);
   const location = extractLocation(text, fields);
   const [checkIn, checkOut] = extractDates(text, fields);
-  const rooms = extractRooms(text, tableRows);
-  const addOns = extractAddOns(text, tableRows);
-  const attritionRules = extractAttritionRules(text);
-
-  // Extract event info from contract (event name, type, client)
   const eventType = detectEventType(text);
   const eventName = extractEventName(text, eventType, fields);
   const clientName = extractClientName(text, fields);
 
+  // ── Structured arrays ──────────────────────────────────────────────────────
+  const rooms = extractRooms(text, tableRows);
+  const addOns = extractAddOns(text, tableRows);
+  const attritionRules = extractAttritionRules(text);
+
+  // ── Extended metadata ──────────────────────────────────────────────────────
+  const contractNo    = extractContractNo(text, fields);
+  const issueDate     = extractIssueDate(text, fields);
+  const validUntil    = extractValidUntil(text, fields);
+  const groupCode     = extractGroupCode(text, fields);
+  const gstin         = extractGSTIN(text, fields);
+  const expectedGuests = extractExpectedGuests(text, fields);
+  const nights        = extractNights(text, fields);
+  // If no explicit nights found, calculate from check-in/check-out dates
+  const resolvedNights = nights || (() => {
+    if (checkIn && checkOut) {
+      const d1 = new Date(checkIn), d2 = new Date(checkOut);
+      if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) {
+        const diff = Math.round((d2.getTime() - d1.getTime()) / 86400000);
+        if (diff > 0 && diff < 90) return diff;
+      }
+    }
+    return 0;
+  })();
+  const totalAmount   = extractTotalAmount(text, fields);
+  const currency      = extractCurrency(text);
+  const taxInfo       = extractTaxInfo(text);
+  const paymentTerms  = extractPaymentTerms(text, fields);
+  const earlyCheckIn  = extractEarlyCheckIn(text);
+  const lateCheckOut  = extractLateCheckOut(text);
+  const hotelContact  = extractHotelContact(text, fields);
+  const agentContact  = extractAgentContact(text, fields);
+  const signatories   = extractSignatories(text);
+
   const data: ParsedContract = {
+    // Core
     venue: venue || "Unknown Venue",
     location: location || "Unknown Location",
     checkIn: checkIn || "",
@@ -1946,10 +2468,29 @@ export async function parseContractLocally(
     eventName: eventName || "",
     eventType: eventType || "event",
     clientName: clientName || "",
-    rooms:
-      rooms.length > 0
-        ? rooms
-        : [{ roomType: "Standard Room", rate: 0, quantity: 1 }],
+    // Contract metadata
+    contractNo:     contractNo     || undefined,
+    issueDate:      issueDate      || undefined,
+    validUntil:     validUntil     || undefined,
+    groupCode:      groupCode      || undefined,
+    gstin:          gstin          || undefined,
+    // Headcount / duration
+    expectedGuests: expectedGuests || undefined,
+    nights:         resolvedNights || undefined,
+    // Financial
+    totalAmount:    totalAmount    || undefined,
+    currency:       currency       || undefined,
+    taxInfo:        taxInfo        || undefined,
+    paymentTerms:   paymentTerms   || undefined,
+    // Contacts
+    hotelContact:   hotelContact   || undefined,
+    agentContact:   agentContact   || undefined,
+    signatories:    signatories.length > 0 ? signatories : undefined,
+    // Policies
+    earlyCheckIn:   earlyCheckIn   || undefined,
+    lateCheckOut:   lateCheckOut   || undefined,
+    // Structured arrays
+    rooms: rooms.length > 0 ? rooms : [{ roomType: "Standard Room", rate: 0, quantity: 1 }],
     addOns,
     attritionRules,
   };
@@ -2069,6 +2610,34 @@ export async function parseInviteLocally(
       ? "Event details extracted from uploaded document."
       : "Colors extracted from uploaded image. Please enter event name and type manually.",
   };
+
+  // Enrich with venue, dates, and agent contact if text is available
+  if (text) {
+    const iFields = extractLabeledFields(text);
+    const iVenue = extractVenue(text, iFields);
+    if (iVenue) data.venue = iVenue;
+
+    const iLocation = extractLocation(text, iFields);
+    if (iLocation) data.location = iLocation;
+
+    const [iCheckIn, iCheckOut] = extractDates(text, iFields);
+    if (iCheckIn)  data.checkIn  = iCheckIn;
+    if (iCheckOut) data.checkOut = iCheckOut;
+
+    // nights – explicit text first, then date diff
+    let iNights = extractNights(text, iFields);
+    if (!iNights && iCheckIn && iCheckOut) {
+      const d1 = new Date(iCheckIn), d2 = new Date(iCheckOut);
+      if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) {
+        const diff = Math.round((d2.getTime() - d1.getTime()) / 86400000);
+        if (diff > 0 && diff < 90) iNights = diff;
+      }
+    }
+    if (iNights) data.nights = iNights;
+
+    const iAgent = extractAgentContact(text, iFields);
+    if (iAgent) data.agentContact = iAgent;
+  }
 
   return { success: true, data };
 }
