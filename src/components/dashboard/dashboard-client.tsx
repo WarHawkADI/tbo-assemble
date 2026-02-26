@@ -305,12 +305,19 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
               <p className="text-xs font-medium text-gray-500 dark:text-zinc-400 uppercase tracking-wide">Total Revenue</p>
               <TrendingUp className="h-4 w-4 text-emerald-600" />
             </div>
-            <AnimatedCounter
-              value={totalRevenue}
-              className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-zinc-100"
-              prefix="₹"
-              formatter={(n) => n.toLocaleString("en-IN")}
-            />
+            {totalRevenue > 0 ? (
+              <AnimatedCounter
+                value={totalRevenue}
+                className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-zinc-100"
+                prefix="₹"
+                formatter={(n) => n.toLocaleString("en-IN")}
+              />
+            ) : (
+              <div className="flex flex-col">
+                <span className="text-2xl sm:text-3xl font-bold text-gray-300 dark:text-zinc-600">₹0</span>
+                <span className="text-xs mt-1 text-gray-400 dark:text-zinc-500">Awaiting first booking</span>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -595,8 +602,12 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
                     </div>
                     <div className="bg-zinc-50/80 dark:bg-zinc-900/40 px-3 py-2.5 text-center">
                       <p className="text-[10px] font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider">Revenue</p>
-                      <p className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                        {formatCurrency(event.totalRevenue)}
+                      <p className="text-sm font-extrabold mt-0.5">
+                        {event.totalRevenue > 0 ? (
+                          <span className="text-emerald-600 dark:text-emerald-400">{formatCurrency(event.totalRevenue)}</span>
+                        ) : (
+                          <span className="text-gray-300 dark:text-zinc-600 text-xs font-medium">No bookings</span>
+                        )}
                       </p>
                     </div>
                     <div className="bg-zinc-50/80 dark:bg-zinc-900/40 px-3 py-2.5 text-center">

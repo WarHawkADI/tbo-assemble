@@ -25,6 +25,7 @@ import {
   Activity,
   MessageSquare,
   ArrowLeft,
+  RotateCcw,
 } from "lucide-react";
 
 const navigation = [
@@ -50,10 +51,30 @@ export default function Sidebar() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
   
   // Auto-detect eventId from URL path (e.g., /dashboard/events/abc123/...)
   const eventIdMatch = pathname.match(/\/dashboard\/events\/([^/]+)/);
   const eventId = eventIdMatch ? eventIdMatch[1] : undefined;
+
+  // Demo reset handler
+  const handleDemoReset = async () => {
+    if (!confirm("Reset all demo data? This will restore the sample events, guests, and bookings.")) return;
+    setResetting(true);
+    try {
+      const res = await fetch("/api/seed", { method: "POST" });
+      if (res.ok) {
+        router.push("/dashboard");
+        router.refresh();
+      } else {
+        alert("Failed to reset demo data");
+      }
+    } catch {
+      alert("Failed to reset demo data");
+    } finally {
+      setResetting(false);
+    }
+  };
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -263,6 +284,15 @@ export default function Sidebar() {
             onClick={() => window.open('https://tbo.com', '_blank')}
           >
             <HelpCircle className="h-4 w-4" />
+          </button>
+          <button
+            onClick={handleDemoReset}
+            disabled={resetting}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors disabled:opacity-50"
+            title="Reset Demo Data"
+            aria-label="Reset Demo Data"
+          >
+            <RotateCcw className={`h-4 w-4 ${resetting ? 'animate-spin' : ''}`} />
           </button>
           <button
             onClick={() => { logout(); router.push("/login"); }}

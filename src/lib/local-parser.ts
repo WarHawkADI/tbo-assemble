@@ -64,6 +64,37 @@ function normalizeText(raw: string): string {
     .join("\n")
     .trim();
 
+  // ═══ OCR FIXES (must happen BEFORE letter/number splitting!) ═══
+  
+  // Fix currency symbol OCR corruption: ₹5,OOO → ₹5,000
+  text = text.replace(/₹\s*(\d+)[,.]?([OoQD]{2,3})(?=[^A-Za-z]|$)/g, (_, d, os) => `₹${d},${'0'.repeat(os.length)}`);
+  text = text.replace(/Rs\.?\s*(\d+)[,.]?([OoQD]{2,3})(?=[^A-Za-z]|$)/gi, (_, d, os) => `Rs. ${d},${'0'.repeat(os.length)}`);
+  
+  // Fix common OCR mistakes: O→0, l→1, S→5 in years and numbers
+  text = text.replace(/\b2O(\d{2})\b/g, "20$1");  // 2O26 → 2026
+  text = text.replace(/([,\s])O([0-9]{3}[,\s])/g, "$10$2");  // ,O00 → ,000
+  text = text.replace(/\bO([0-9]{2,})\b/g, "0$1");  // O00 → 000
+  text = text.replace(/\bl([0-9])/g, "1$1");  // l5 → 15
+  text = text.replace(/([0-9])l\b/g, "$11");  // 5l → 51
+  text = text.replace(/([0-9])O\b/g, "$10");  // 3O → 30
+  text = text.replace(/\bS([0-9])/g, "5$1");  // S00 → 500
+  
+  // Fix spaced-out numbers from OCR: "2 5 May" → "25 May", "4,O O O" → "4,000"
+  // Pattern: digit space digit (not across newlines, max 2 spaces between)
+  text = text.replace(/(\d)\s{1,2}(\d)/g, "$1$2");
+  
+  // Fix spaced dates: "1 5 / 0 3 / 2 0 2 6" → "15/03/2026"
+  text = text.replace(/(\d)\s+(\/|\-|\.)\s+(\d)/g, "$1$2$3");
+  
+  // Additional pass: Fix remaining O's in numeric contexts (e.g. "4,OO,OOO" → "4,00,000")
+  // Look for patterns like "digit,OOO" or ",OO," and replace O with 0  text = text.replace(/(\d,)O+/g, (match, prefix) => prefix + '0'.repeat(match.length - prefix.length));
+  text = text.replace(/,O+(?=[,\s\n]|$)/g, (match) => ',' + '0'.repeat(match.length - 1));
+  
+  // Re-add space between day and month name after digit compression: "25May" → "25 May"
+  text = text.replace(/(\d{1,2})(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)/gi, "$1 $2");
+
+  // ═══ TOKEN SEPARATION (after OCR fixes) ═══
+  
   // Insert spaces between letters and numbers to separate merged tokens
   text = text.replace(/([A-Za-z])(?=\d)/g, "$1 ");
   text = text.replace(/(\d)(?=[A-Za-z])/g, "$1 ");
@@ -74,7 +105,6 @@ function normalizeText(raw: string): string {
     /\b([A-Za-z])( [A-Za-z]){2,}\b/g,
     (match) => match.replace(/ /g, "")
   );
-
 
   return text;
 }
@@ -713,19 +743,87 @@ function extractVenue(
 ): string {
   const candidates: string[] = [];
 
+  // Strategy 0: Multi-property contracts - look for "Primary Property:" / "Main Venue:"
+  const multiPropertyMatch = text.match(/(?:primary\s*property|main\s*venue|primary\s*venue)\s*[:–—-]\s*([^\n]{5,80})/i);
+  if (multiPropertyMatch?.[1]) {
+    const primaryVenue = multiPropertyMatch[1].trim().replace(/[,.]$/, "");
+    if (primaryVenue.length >= 5) {
+      // Extract just the venue name (before comma if city follows)
+      const venueOnly = primaryVenue.split(",")[0].trim();
+      // Give primary property highest priority by adding it multiple times (boosts score)
+      candidates.push(venueOnly);
+      candidates.push(venueOnly);
+      candidates.push(venueOnly);
+    }
+  }
+
   // Strategy 1: Labeled fields (highest confidence)
   const venueFieldKeys = [
     "hotel name", "property name", "venue name", "hotel", "property", "venue",
     "name of hotel", "name of the hotel", "name of property", "name of venue",
     "hotel/resort name", "resort name",
   ];
+  
+  // Helper: Check if extracted venue is just a ballroom/facility name (not the hotel)
+  const isBallroomOnly = (venueName: string): boolean => {
+    const ballroomPattern = /^(?:Crystal|Grand|Royal|Imperial|Regal|Diamond|Pearl|Golden|Silver|Emerald|Sapphire|Executive|Presidential)\s*(?:Ballroom|Hall|Room|Suite|Lawn|Garden|Terrace)$/i;
+    return ballroomPattern.test(venueName.trim());
+  };
+  
   for (const key of venueFieldKeys) {
     if (fields[key] && fields[key].length >= 3) {
-      candidates.push(fields[key]);
+      // CRITICAL: If venue field is just a ballroom name, skip it and find the real hotel name below
+      if (!isBallroomOnly(fields[key])) {
+        candidates.push(fields[key]);
+      }
     }
   }
 
-  // Strategy 1b: Extend labeled-field venue names with next-line hotel suffixes.
+  // Strategy 1b: For banquet hall contracts, extract the HOTEL NAME from header/title
+  // Look for hotel name patterns near the top of the document (first 500 characters)
+  // This has ABSOLUTE PRIORITY over labeled "Venue" fields that might just be ballroom names
+  const headerSection = text.substring(0, 500);
+  
+  // Pattern 1: Multi-word capitalized property name near the start
+  // Matches: "The Grand Bhagwati", "Taj Lake Palace", "ITC Grand Chola", etc.
+  const lines = headerSection.split('\n').filter(l => l.trim().length > 0);
+  for (let i = 0; i < Math.min(lines.length, 15); i++) {
+    const line = lines[i].trim();
+    // Skip lines that are section headers in ALL CAPS
+    if (line === line.toUpperCase() && line.length > 20) continue;
+    // Skip lines that don't start with a capital or " The"
+    if (!/^(?:The\s+)?[A-Z]/.test(line)) continue;
+    
+    // Extract the property name (everything before first comma or address)
+    const propertyMatch = line.match(/^((?:The\s+)?[A-Z][A-Za-z\s&']+?)(?:,|\s+\d+|\s*-\s*\d+|$)/);
+    if (propertyMatch) {
+      const name = propertyMatch[1].trim();
+      // Check if it looks like a hotel/venue name (has certain keywords or is reasonably long)
+      if (name.length >= 8 && (
+        /(?:Grand|Palace|Hotel|Resort|Inn|Suites|Plaza|Regency|Residency|Bhagwati|Manor|Lodge|Club)/i.test(name) ||
+        name.split(/\s+/).length >= 2
+      )) {
+        // ABSOLUTE HIGHEST PRIORITY
+        candidates.push(name);
+        candidates.push(name);
+        candidates.push(name);
+        candidates.push(name);
+        break;  // Take the first match from top lines
+      }
+    }
+  }
+  
+  // Strategy 1c: Banquet hall contracts - "Hotel Name - Ballroom Name" format
+  // Extract hotel name before the dash/hyphen if a facility name follows
+  const banquetPattern = /([A-Z][A-Za-z\s&']+?(?:Hotel|Resort|Palace|Inn|Lodge|Retreat|Spa|Suites|Mansion|Manor|Club|Tower|Centre|Center|Plaza|Residency|Regency))\s*[-–—]\s*(?:Crystal|Grand|Royal|Imperial|Regal|Diamond|Pearl|Golden|Silver|Emerald|Sapphire)\s*(?:Ballroom|Hall|Room)/i;
+  const banquetMatch = text.match(banquetPattern);
+  if (banquetMatch?.[1]) {
+    // Give hotel name from banquet format highest priority
+    candidates.push(banquetMatch[1].trim());
+    candidates.push(banquetMatch[1].trim());
+  }
+  
+  // Strategy 1d: Extend labeled-field venue names with next-line hotel suffixes.
   // Handles multi-line venue names like:
   //   "The Grand Hyatt"    (labeled field value)
   //   "Resort & Spa"       (continuation on next line)
@@ -836,12 +934,23 @@ function extractVenue(
   // Score each candidate: prefer names with hotel-type suffixes, moderate length,
   // and penalize very long generic captures
   const hotelSuffixes = /(?:Hotel|Resort|Palace|Inn|Lodge|Retreat|Spa|Suites|Mansion|Manor|Club|Tower|Centre|Center|Plaza|Residency|Regency)$/i;
+  const ballroomOnlyPattern = /^(?:Crystal|Grand|Royal|Imperial|Regal|Diamond|Pearl|Golden|Silver|Emerald|Sapphire|Executive|Presidential)\s*(?:Ballroom|Hall|Room|Suite|Lawn|Garden|Terrace)$/i;
+  
   const scored = unique.map((name) => {
     let score = 0;
+    
+    // CRITICAL: Ballroom-only names get heavily penalized (should never be selected if hotel name exists)
+    if (ballroomOnlyPattern.test(name.trim())) {
+      score -= 1000;  // Massive penalty
+      return { name, score };
+    }
+    
     // Ends with a hotel-type word → highest priority
     if (hotelSuffixes.test(name)) score += 50;
     // Contains a branded chain name → boost
     if (/Taj|Oberoi|ITC|Marriott|Hilton|Hyatt|Radisson|Sheraton|Westin|JW|Ritz|Four\s*Seasons|Le\s*Meridien|Leela|Lalit|Trident|Vivanta|Sofitel|Pullman|Kempinski|St\.?\s*Regis/i.test(name)) score += 30;
+    // Contains "Bhagwati" or other Indian hotel brands → boost
+    if (/Bhagwati|Lemon\s*Tree|Sarovar|Fortune|Keys|Fern/i.test(name)) score += 30;
     // Reasonable length (10-60 chars) → good name
     if (name.length >= 10 && name.length <= 60) score += 20;
     // Very short (<10) → might be incomplete
@@ -850,10 +959,97 @@ function extractVenue(
     if (name.length > 60) score -= 10;
     // From labeled fields (appears first in candidates) → boost
     if (candidates.indexOf(name) < 3) score += 10;
+    // From header section (first 300 chars) → boost for primary hotel name
+    if (text.substring(0, 300).includes(name)) score += 40;
     return { name, score };
   });
   scored.sort((a, b) => b.score - a.score || b.name.length - a.name.length);
-  return scored[0].name.substring(0, 100);
+  
+  // Filter out generic facility names and room types if better venue exists
+  const genericFacilities = /^(?:conference\s+centre|conference\s+center|meeting\s+room|ballroom|banquet\s+hall|executive|deluxe|standard|premium|superior|royal|presidential)(?:\s+(?:suite|room|suites|rooms|hall|centre|center))?$/i;
+  
+  // CRITICAL FIX: Filter out written numbers that might be extracted as venue names
+  // e.g., "Fourteen Lakh Rupees" or "Twenty" from narrative paragraphs
+  const writtenNumberPattern = /^(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|lakh|lac|crore)(?:[\s-]+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|lakh|lac|crore|rupees?))*$/i;
+  
+  // Filter scored candidates to remove:
+  // 1. Written numbers ("Fourteen Lakh Rupees")
+  // 2. Generic facilities (unless it's the only option)
+  // 3. Very short single words that aren't brand names
+  const filteredScored = scored.filter(s => {
+    // Always exclude written numbers
+    if (writtenNumberPattern.test(s.name.trim())) return false;
+    
+    // If there are high-scoring alternatives, filter out generic facilities
+    if (scored.some(alt => alt.score >= 30 && !genericFacilities.test(alt.name))) {
+      return !genericFacilities.test(s.name);
+    }
+    
+    return true;
+  });
+  
+  // Find best non-generic venue (score >= 30)
+  const betterVenue = filteredScored.find(s => s.score >= 30 && !genericFacilities.test(s.name));
+  const selected = betterVenue || filteredScored[0] || scored[0];
+  
+  // Clean the selected venue name to remove common prefixes and garbage suffixes
+  let finalVenue = selected.name
+    .replace(/^(?:For\s+the\s+|For\s+)/i, "")  // Remove "For" or "For the" prefix
+    .replace(/^(?:At\s+|In\s+|By\s+)/i, "")    // Remove location prepositions
+    .trim();
+  
+  // ENHANCEMENT: Try to append city name if found nearby in text and not already in venue name
+  const knownCities = [
+    "Delhi", "Mumbai", "Bangalore", "Bengaluru", "Chennai", "Kolkata", "Hyderabad",
+    "Pune", "Ahmedabad", "Jaipur", "Goa", "Udaipur", "Agra", "Kochi", "Noida",
+    "Singapore", "Dubai", "London", "Paris", "Tokyo", "Bangkok"
+  ];
+  
+  let cityToAppend = "";
+  
+  // If venue doesn't already contain a city name, try to find one
+  const hasCity = knownCities.some(city => 
+    new RegExp(`\\b${city}\\b`, "i").test(finalVenue)
+  );
+  
+  if (!hasCity) {
+    // Look for city name near the venue in the text (within 100 chars)
+    const venueIndex = text.toLowerCase().indexOf(finalVenue.toLowerCase());
+    if (venueIndex !== -1) {
+      const nearbyText = text.substring(
+        Math.max(0, venueIndex - 50),
+        Math.min(text.length, venueIndex + finalVenue.length + 100)
+      );
+      
+      // Find closest city name
+      for (const city of knownCities) {
+        if (new RegExp(`\\b${city}\\b`, "i").test(nearbyText)) {
+          cityToAppend = city;
+          break;
+        }
+      }
+    }
+  }
+  
+  // Remove common garbage suffixes that get appended from PDF parsing
+  const garbageSuffixes = [
+    "Location", "Address", "Check", "Checkout", "Checkin", "Check-in", "Check-out",
+    "Name", "Property", "Venue", "Hotel", "Resort", "Details", "Information",
+    "Contact", "Phone", "Email", "Website", "Fax", "Tel"
+  ];
+  
+  for (const suffix of garbageSuffixes) {
+    // Remove garbage suffixes at the end
+    const suffixPattern = new RegExp(`\\s+${suffix}$`, "i");
+    finalVenue = finalVenue.replace(suffixPattern, "");
+  }
+  
+  // Append city if found and not already present
+  if (cityToAppend && !new RegExp(`\\b${cityToAppend}\\b`, "i").test(finalVenue)) {
+    finalVenue = `${finalVenue} ${cityToAppend}`;
+  }
+  
+  return finalVenue.trim().substring(0, 100);
 }
 
 /**
@@ -889,6 +1085,14 @@ function extractLocation(
     return /^\d+\s+[A-Za-z]/.test(s) && !s.includes(",") && s.split(" ").length <= 4;
   };
 
+  /** Returns true if string looks like table data (has multiple numbers/$ symbols on one line) */
+  const isTableData = (s: string): boolean => {
+    const dollarCount = (s.match(/\$/g) || []).length;
+    const currencyCount = (s.match(/₹/g) || []).length;
+    const numberCount = (s.match(/\d+[,.]\d+/g) || []).length;
+    return (dollarCount + currencyCount + numberCount) >= 3;
+  };
+
   /**
    * If the string looks like a full street address ("123 Street, City, Country"),
    * extract just the city portion (second-to-last comma segment, trimmed).
@@ -909,11 +1113,42 @@ function extractLocation(
     "location", "city", "place", "situated at", "located at",
     "address",   // lowest priority – skip if it looks like a personal street address
   ];
+  
+  // CRITICAL FIX: Filter out guest count fields that might be mislabeled as location
+  // e.g., "Location: 400 guests (confirmed: 350 guests)" or "Capacity: 400 guests"
+  const isGuestCountField = (s: string): boolean => {
+    return /\d+\s*(?:guests?|persons?|pax|attendees?|delegates?|capacity|confirmed)/i.test(s);
+  };
+  const isCapacityKey = (key: string): boolean => {
+    return /capacity|seating|confirmed|expected\s*guests?/i.test(key);
+  };
   for (const key of locationFieldKeys) {
     if (fields[key] && fields[key].length >= 3) {
-      const clean = cleanLocation(fields[key]);
+      // CRITICAL: Skip capacity-related keys entirely
+      if (isCapacityKey(key)) {
+        continue;
+      }
+      // CRITICAL FIX: Check for guest count BEFORE cleaning (check raw value first)
+      // Also check if value contains "capacity" or "confirmed" keywords
+      const value = fields[key];
+      if (isGuestCountField(value) || /capacity|seating|confirmed/i.test(value)) {
+        continue;
+      }
+      const clean = cleanLocation(value);
+      // Double-check after cleaning as well
+      if (isGuestCountField(clean)) {
+        continue;
+     }
       // Skip plain street addresses (e.g. "456 Maple Street") – no city component
       if ((key === "address" || key === "location") && isBareStreetAddress(clean)) {
+        continue;
+      }
+      // Skip if looks like table data (many numbers/currency symbols)
+      if (isTableData(clean)) {
+        continue;
+      }
+      // Skip if location contains room/rate keywords (extracted from table rows)
+      if (/(?:room|suite|night|rate|tariff|\$|₹)/i.test(clean)) {
         continue;
       }
       // If address is a full street address ("123 Blvd, City, Country"), extract just the city
@@ -931,6 +1166,10 @@ function extractLocation(
     const match = text.match(pattern);
     if (match?.[1]) {
       const candidate = cleanLocation(match[1].trim().replace(/[.]$/, ""));
+      // Skip if looks like table data
+      if (isTableData(candidate)) continue;
+      // Skip if contains room/rate keywords (from table rows)
+      if (/(?:room|suite|night|rate|tariff|\$|₹)/i.test(candidate)) continue;
       // If address is a full street address, extract just the city
       const cityFromAddr2 = extractCityFromAddress(candidate);
       if (cityFromAddr2) return cityFromAddr2;
@@ -947,6 +1186,15 @@ function extractLocation(
     if (
       !/^(The|This|That|Which|Order|Any|Our|All|Its|Each|Some)$/i.test(loc)
     ) {
+      return loc.substring(0, 80);
+    }
+  }
+
+  // Strategy 3.5: Check for multi-property primary location
+  const multiPropertyLocMatch = text.match(/(?:primary\s*property|main\s*venue)\s*[:–—-]\s*[^,\n]+,\s*([^,\n]{3,40})/i);
+  if (multiPropertyLocMatch?.[1]) {
+    const loc = multiPropertyLocMatch[1].trim().replace(/[.]$/, "");
+    if (loc.length >= 3 && !/\d|\$|₹/.test(loc)) {
       return loc.substring(0, 80);
     }
   }
@@ -973,9 +1221,13 @@ function extractLocation(
     "Kuala Lumpur", "Jakarta", "Ho Chi Minh", "Hanoi", "Seoul",
   ];
 
+  // ENHANCEMENT: Use word boundary matching to avoid partial matches from OCR noise
+  // e.g., avoid matching "Cancellati" when looking for cities, only match complete words
   for (const city of cities) {
-    const idx = text.indexOf(city);
-    if (idx !== -1) {
+    const wordBoundaryPattern = new RegExp(`\\b${city.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    const match = text.match(wordBoundaryPattern);
+    if (match) {
+      const idx = match.index!;
       const after = text.substring(idx, idx + 80);
       const withState = after.match(
         new RegExp(
@@ -1011,16 +1263,43 @@ function extractDates(
   let checkOut = "";
 
   const checkInFieldKeys = [
+    "event dates", "dates", "event date", // HIGHEST PRIORITY: event-specific dates
     "check-in", "checkin", "check in", "check-in date", "checkin date", "check in date",
-    "arrival", "arrival date", "start date",
+    "arrival", "arrival date", "start date", "from date", "ci", "c/i", "c.i.",
+    "dates (check-in)", "date (check-in)"
   ];
   const checkOutFieldKeys = [
     "check-out", "checkout", "check out", "check-out date", "checkout date", "check out date",
-    "departure", "departure date", "end date",
+    "departure", "departure date", "end date", "to date", "co", "c/o", "c.o.",
+    "dates (check-out)", "date (check-out)"
   ];
+  
+  // Helper: Check if a field context suggests it's a contract/admin date (not event date)
+  const isAdminDateField = (key: string, value: string, fullText: string): boolean => {
+    // Check if near "contract", "issue", "issued", "reference" keywords
+    const keyLower = key.toLowerCase();
+    if (/contract|issue|issued|ref(?:erence)?|valid|validity|expiry/.test(keyLower)) {
+      return true;
+    }
+    // Check context window around the value in text
+    const idx = fullText.indexOf(value);
+    if (idx > 0) {
+      const before = fullText.substring(Math.max(0, idx - 100), idx).toLowerCase();
+      const after = fullText.substring(idx, idx + 100).toLowerCase();
+      // If "contract", "issued", "reference" appears within 100 chars, likely admin date
+      if (/\b(?:contract|issue|issued|ref(?:erence)?)\b/.test(before + after)) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   for (const key of checkInFieldKeys) {
     if (fields[key]) {
+      // Skip if this looks like an admin/contract date
+      if (isAdminDateField(key, fields[key], text)) {
+        continue;
+      }
       const parsed = parseDateFromString(fields[key], months);
       if (parsed) {
         checkIn = parsed;
@@ -1030,6 +1309,10 @@ function extractDates(
   }
   for (const key of checkOutFieldKeys) {
     if (fields[key]) {
+      // Skip if this looks like an admin/contract date
+      if (isAdminDateField(key, fields[key], text)) {
+        continue;
+      }
       const parsed = parseDateFromString(fields[key], months);
       if (parsed) {
         checkOut = parsed;
@@ -1068,6 +1351,62 @@ function extractDates(
   }
 
   if (checkIn && checkOut) return [checkIn, checkOut];
+
+  // ─── Strategy 2.4: "Dates:" field with range ───
+  // "Event Dates: 5-6 June 2026" or "Dates: May 22-24, 2026"
+  const datesFieldMatch = text.match(/(?:event\s+dates?|dates?|conference\s+dates?)\s*[:=]\s*([\d\-\/A-Za-z,\s]+?)(?=\n|Event|$)/i);
+  if (datesFieldMatch && !checkIn && !checkOut) {
+    const datesPart = datesFieldMatch[1].trim();
+    // Try to parse as range first
+    const compactRange = datesPart.match(/(\d{1,2})\s*[-–—]\s*(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{4})/i);
+    if (compactRange) {
+      const month = months[compactRange[3].toLowerCase()];
+      if (month) {
+        checkIn = `${compactRange[4]}-${month}-${compactRange[1].padStart(2, "0")}`;
+        checkOut = `${compactRange[4]}-${month}-${compactRange[2].padStart(2, "0")}`;
+        return [checkIn, checkOut];
+      }
+    }
+  }
+
+  if (checkIn && checkOut) return [checkIn, checkOut];
+
+  // ─── Strategy 2.3: Abbreviated formats (CI: / CO:) ───
+  if (!checkIn) {
+    const ciMatch = text.match(/\bCI\s*[:=]\s*([\d\-\/A-Za-z,\s]+?)(?=\||CO\b|$)/i);
+    if (ciMatch) {
+      const parsed = parseDateFromString(ciMatch[1].trim().split(/[;,\|]/)[ 0].trim(), months);
+      if (parsed) checkIn = parsed;
+    }
+  }
+  if (!checkOut) {
+    const coMatch = text.match(/\bCO\s*[:=]\s*([\d\-\/A-Za-z,\s]+?)(?=\||Nts\b|$)/i);
+    if (coMatch) {
+      const parsed = parseDateFromString(coMatch[1].trim().split(/[;,\|]/)[0].trim(), months);
+      if (parsed) checkOut = parsed;
+    }
+  }
+
+  if (checkIn && checkOut) return [checkIn, checkOut];
+
+  // ─── Strategy 2.5: Prose date ranges ───
+  // "from December 20 to December 23, 2026" or "December 20 to 23, 2026"
+  const proseRange = text.match(
+    new RegExp(`(?:from\\s+)?(${monthNames})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+to\\s+(?:(${monthNames})\\s+)?(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})`, "i")
+  );
+  if (proseRange && !checkIn && !checkOut) {
+    const month1 = months[proseRange[1].toLowerCase()];
+    const day1 = proseRange[2].padStart(2, "0");
+    const month2 = proseRange[3] ? months[proseRange[3].toLowerCase()] : month1;
+    const day2 = proseRange[4].padStart(2, "0");
+    const year = proseRange[5];
+    
+    if (month1 && month2) {
+      checkIn = `${year}-${month1}-${day1}`;
+      checkOut = `${year}-${month2}-${day2}`;
+      return [checkIn, checkOut];
+    }
+  }
 
   // ─── Strategy 3: Collect all dates from text ───
   const parsed: string[] = [];
@@ -1120,19 +1459,40 @@ function extractDates(
   }
 
   // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  // IMPORTANT: Indian context - prefer DD/MM format over MM/DD
+  // Heuristic: If first number > 12, it must be day. If both <= 12, assume DD/MM (Indian standard).
   const numericPattern = /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/g;
+  // Detect Indian context: look for ₹, Rs, INR in text
+  const isIndianContext = /[\u20b9]|Rs\.?|INR|India|Mumbai|Delhi|Bangalore|Chennai|Hyderabad|Kolkata|Pune|Jaipur|Goa|GSTIN/i.test(text);
+  
   while ((m = numericPattern.exec(text)) !== null) {
     const a = parseInt(m[1]);
     const b = parseInt(m[2]);
     const year = m[3];
-    if (a <= 31 && b <= 12) {
+    
+    if (a > 12 && a <= 31 && b <= 12) {
+      // First number > 12, must be DD/MM/YYYY
       parsed.push(
         `${year}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`
       );
-    } else if (b <= 31 && a <= 12) {
+    } else if (b > 12 && b <= 31 && a <= 12) {
+      // Second number > 12, must be MM/DD/YYYY (unusual but handle it)
       parsed.push(
         `${year}-${String(a).padStart(2, "0")}-${String(b).padStart(2, "0")}`
       );
+    } else if (a <= 12 && b <= 12) {
+      // Ambiguous: both could be month. Use Indian context heuristic.
+      if (isIndianContext) {
+        // Indian format: DD/MM/YYYY
+        parsed.push(
+          `${year}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`
+        );
+      } else {
+        // Default to DD/MM/YYYY (more common globally than MM/DD)
+        parsed.push(
+          `${year}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`
+        );
+      }
     }
   }
 
@@ -1188,36 +1548,63 @@ function extractDates(
 
 /**
  * Try to parse a date string in various formats. Returns YYYY-MM-DD or null.
+ * ENHANCED: Handles short years, ordinals, weekdays, and more formats
  */
 function parseDateFromString(
   str: string,
   months: Record<string, string>
 ): string | null {
   str = str.trim();
+  
+  // Remove common prefixes and weekdays
+  str = str.replace(/^(on|from|through|until|till|the|to)\s+/i, "");
+  str = str.replace(/(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s*/gi, "");
+  str = str.replace(/(st|nd|rd|th)\b/g, ""); // Remove ordinals: 22nd → 22
 
   // ISO format: 2026-08-14
   const iso = str.match(/(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return iso[0];
 
-  // DD Month YYYY: "14 August 2026"
+  // DD Month YYYY: "14 August 2026" or "14 Aug 2026"
   const dmy = str.match(
-    /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{4})/i
+    /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{4})/i
   );
   if (dmy) {
     const month = months[dmy[2].toLowerCase()];
     if (month) return `${dmy[3]}-${month}-${dmy[1].padStart(2, "0")}`;
   }
 
-  // Month DD, YYYY: "August 14, 2026"
+  // Month DD, YYYY: "August 14, 2026" or "Aug 14, 2026"
   const mdy = str.match(
-    /(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2}),?\s+(\d{4})/i
+    /(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2}),?\s+(\d{4})/i
   );
   if (mdy) {
     const month = months[mdy[1].toLowerCase()];
     if (month) return `${mdy[3]}-${month}-${mdy[2].padStart(2, "0")}`;
   }
 
-  // DD/MM/YYYY or DD-MM-YYYY
+  // SHORT YEAR FORMAT: "03-Aug-26" or "14-01-26" (2-digit year)
+  const shortYearAbbrev = str.match(/(\d{1,2})-([A-Za-z]{3})-(\d{2})\b/);
+  if (shortYearAbbrev) {
+    const month = months[shortYearAbbrev[2].toLowerCase()];
+    if (month) {
+      const year = "20" + shortYearAbbrev[3]; // Assume 20xx
+      return `${year}-${month}-${shortYearAbbrev[1].padStart(2, "0")}`;
+    }
+  }
+
+  // DD/MM/YY or DD-MM-YY (short year numeric)
+  const shortYearNumeric = str.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2})\b/);
+  if (shortYearNumeric) {
+    const a = parseInt(shortYearNumeric[1]);
+    const b = parseInt(shortYearNumeric[2]);
+    const year = "20" + shortYearNumeric[3]; // Assume 20xx
+    if (a <= 31 && b <= 12) {
+      return `${year}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
+    }
+  }
+
+  // DD/MM/YYYY or DD-MM-YYYY (full year numeric)
   const numeric = str.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
   if (numeric) {
     const a = parseInt(numeric[1]);
@@ -1227,6 +1614,16 @@ function parseDateFromString(
     }
     if (b <= 31 && a <= 12) {
       return `${numeric[3]}-${String(a).padStart(2, "0")}-${String(b).padStart(2, "0")}`;
+    }
+  }
+
+  // MM/DD/YYYY format (US style)
+  const usNumeric = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (usNumeric) {
+    const month = parseInt(usNumeric[1]);
+    const day = parseInt(usNumeric[2]);
+    if (month <= 12 && day <= 31) {
+      return `${usNumeric[3]}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     }
   }
 
@@ -1281,23 +1678,123 @@ function extractValidUntil(text: string, fields: Record<string, string>): string
 
 /** Extract expected / total guest count (takes upper bound of ranges). */
 function extractExpectedGuests(text: string, fields: Record<string, string>): number {
-  for (const k of ["expected guests", "guest count", "total guests", "number of guests", "no of guests", "no. of guests", "pax", "expected pax", "total pax", "attendees", "delegates"]) {
+  // Helper: parse written numbers for guest counts
+  const parseWrittenGuests = (txt: string): number | null => {
+    const nums: Record<string, number> = {
+      "one":1,"two":2,"three":3,"four":4,"five":5,"six":6,"seven":7,"eight":8,"nine":9,
+      "ten":10,"eleven":11,"twelve":12,"thirteen":13,"fourteen":14,"fifteen":15,
+      "sixteen":16,"seventeen":17,"eighteen":18,"nineteen":19,"twenty":20,"thirty":30,
+      "forty":40,"fifty":50,"sixty":60,"seventy":70,"eighty":80,"ninety":90,
+      "hundred":100,"thousand":1000
+    };
+    
+    const lower = txt.toLowerCase();
+    let total = 0;
+    const words = lower.split(/[\s-]+/);
+    
+    for (const word of words) {
+      if (nums[word]) total += nums[word];
+    }
+    
+    // Handle "X hundred": "two hundred fifty" → 250
+    const hundredMatch = lower.match(/([\w-]+)\s*hundred/);
+    if (hundredMatch) {
+      const baseWords = hundredMatch[1].split(/[\s-]+/);
+      let base = 0;
+      baseWords.forEach(w => { if (nums[w]) base += nums[w]; });
+      if (base > 0) total = base * 100;
+      // Add any remainder after "hundred"
+      const remainder = lower.split("hundred")[1];
+      if (remainder) {
+        remainder.split(/[\s-]+/).forEach(w => { if (nums[w] && nums[w] < 100) total += nums[w]; });
+      }
+    }
+    
+    return total > 0 ? total : null;
+  };
+
+  // PRIORITY 0 (HIGHEST): "Confirmed" guest counts
+  // "400 guests (confirmed: 350 guests)" → prioritize 350
+  // "confirmed: 350 pax" → return 350
+  const confirmedPattern = text.match(/\bconfirmed\s*[:=\(]?\s*(\d{2,4})\s*(?:guests?|pax|persons?|attendees?)?/i);
+  if (confirmedPattern) {
+    const n = parseInt(confirmedPattern[1]);
+    // Filter out years (2000-2099)
+    if (n > 0 && n < 2000) return n;
+  }
+
+  // PRIORITY 1: Look for "Total" labeled guest counts (prefer over subsets like "Day Delegates")
+  const totalLabels = ["total guests", "total attendees", "total pax", "total delegates", "total participants", "guest count", "expected guests", "total expected", "pax", "no of pax", "no. of pax"];
+  for (const k of totalLabels) {
     if (fields[k]) {
       const fv = fields[k];
+      // Check for written numbers
+      const written = parseWrittenGuests(fv);
+      if (written && written > 0) return written;
+      
       // If the field has a range like "120 – 150", take the max (upper bound)
       const rangeM = fv.match(/(\d+)\s*[–\-to]+\s*(\d+)/);
       if (rangeM) { const n = parseInt(rangeM[2]); if (n > 0) return n; }
+      
       // Otherwise parse the first run of digits only
       const firstNum = fv.match(/(\d+)/);
       if (firstNum) { const n = parseInt(firstNum[1]); if (n > 0) return n; }
     }
   }
+  
+  // ABBREVIATION SUPPORT: Look for "PAX:" or "PAX =" in text
+  const paxPattern = text.match(/\bPAX\s*[:=]\s*(\d+)/i);
+  if (paxPattern) {
+    const n = parseInt(paxPattern[1]);
+    if (n > 0 && n < 100000) return n;
+  }
+  
+  // PRIORITY 2: Look for other guest-related fields (but score lower than "Total")
+  const otherLabels = ["expected pax", "attendees", "delegates", "pax", "participants", "no of guests", "no. of guests", "number of guests"];
+  for (const k of otherLabels) {
+    if (fields[k]) {
+      const fv = fields[k];
+      const written = parseWrittenGuests(fv);
+      if (written && written > 0) return written;
+      
+      const rangeM = fv.match(/(\d+)\s*[–\-to]+\s*(\d+)/);
+      if (rangeM) { const n = parseInt(rangeM[2]); if (n > 0) return n; }
+      
+      const firstNum = fv.match(/(\d+)/);
+      if (firstNum) { const n = parseInt(firstNum[1]); if (n > 0) return n; }
+    }
+  }
+  
+  // PRIORITY 3: Extract from raw text with label
+  // "Total Attendees: 180 sales professionals" → 180
+  const totalPattern = text.match(/(?:total\s+(?:attendees?|guests?|pax|delegates?|participants?))\s*[:=]?\s*(\d{2,4})/i);
+  if (totalPattern) { const n = parseInt(totalPattern[1]); if (n > 0 && n < 100000) return n; }
+  
+  // Look for written numbers: "two hundred fifty persons"
+  const writtenPattern = text.match(/((?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand)[\s-]*)+\s*(?:guests?|persons?|pax|attendees?|delegates?)/i);
+  if (writtenPattern) {
+    const parsed = parseWrittenGuests(writtenPattern[0]);
+    if (parsed && parsed > 0) return parsed;
+  }
+  
   // Range "120 – 150 guests" → take max
   const range = text.match(/(\d+)\s*[–\-to–]+\s*(\d+)\s*(?:guests?|pax|person|people|attendee|delegate)/i);
-  if (range) return parseInt(range[2]);
-  // "150 pax" / "150 guests"
+  if (range) {
+    const max = parseInt(range[2]);
+    // Filter out years (2000-2099) that might be incorrectly matched
+    if (max >= 2000 && max < 2100) return 0; // Likely a year, not guest count
+    return max;
+  }
+  
+  // "150 pax" / "150 guests" — but avoid matching years
   const single = text.match(/(\d{2,4})\s*(?:guests?|pax|persons?|people|attendees?|delegates?)/i);
-  if (single) { const n = parseInt(single[1]); if (n > 0 && n < 100000) return n; }
+  if (single) { 
+    const n = parseInt(single[1]);
+    // Filter out years (2000-2099)
+    if (n >= 2000 && n < 2100) return 0; // Likely a year, not guest count
+    if (n > 0 && n < 100000) return n;
+  }
+  
   return 0;
 }
 
@@ -1329,44 +1826,237 @@ function extractNights(text: string, fields: Record<string, string>): number {
 
 /** Extract total contract value. */
 function extractTotalAmount(text: string, fields: Record<string, string>): number {
+  // Helper: extract FIRST clean number from a string (before any + / % / text noise)
+  const extractFirstNumber = (str: string): number => {
+    // Remove currency symbols
+    str = str.replace(/[₹$€£]/g, "");
+    str = str.replace(/\b(?:Rs\.?|USD|EUR|GBP|INR)\b/gi, "");
+    
+    // CRITICAL: Handle K/M/B suffixes first (abbreviated formats)
+    // "899.5K" → 899,500, "1.06M" → 1,060,000, "1061.41K" → 1,061,410
+    const suffixMatch = str.match(/([\d,.]+)\s*([KMB])(?:\b|\s|$|\()/i);
+    if (suffixMatch) {
+      const num = parseFloat(suffixMatch[1].replace(/,/g, ""));
+      const suffix = suffixMatch[2].toUpperCase();
+      if (suffix === "K") return Math.round(num * 1000);
+      if (suffix === "M") return Math.round(num * 1000000);
+      if (suffix === "B") return Math.round(num * 1000000000);
+    }
+    
+    // Extract FIRST number pattern (with optional decimals and commas)
+    // Stop at +, %, "plus", "and", parentheses
+    const match = str.match(/([\d,]+(?:\.\d{1,2})?)\s*(?:\+|%|\bplus\b|\band\b|\(|$)/i);
+    if (match) {
+      return parseInt(match[1].replace(/,/g, ""));
+    }
+    
+    // Fallback: take all digits but be careful
+    const cleaned = str.replace(/[^0-9]/g, "");
+    return cleaned ? parseInt(cleaned) : 0;
+  };
+
+  // Helper: parse written Indian numbers ("Twenty-Three Lakh Seventy Thousand" → 2370000)
+  const parseWrittenNumber = (txt: string): number | null => {
+    const lower = txt.toLowerCase();
+    let total = 0;
+    
+    // Number words mapping (comprehensive)
+    const nums: Record<string, number> = {
+      "zero":0,"one":1,"two":2,"three":3,"four":4,"five":5,"six":6,"seven":7,"eight":8,"nine":9,
+      "ten":10,"eleven":11,"twelve":12,"thirteen":13,"fourteen":14,"fifteen":15,"sixteen":16,
+      "seventeen":17,"eighteen":18,"nineteen":19,"twenty":20,"thirty":30,"forty":40,
+      "fifty":50,"sixty":60,"seventy":70,"eighty":80,"ninety":90
+    };
+    
+    // Crore (10,000,000)
+    const croreM = lower.match(/([\w-]+)\s*crores?/);
+    if (croreM) {
+      const words = croreM[1].split(/[\s-]+/);
+      let croreNum = 0;
+      words.forEach(w => { if (nums[w]) croreNum += nums[w]; });
+      if (croreNum > 0) total += croreNum * 10000000;
+    }
+    
+    // Lakh (100,000) - handle "Twenty-Three Lakh", "Twenty Three Lakh"
+    const lakhM = lower.match(/([\w\s-]+?)\s*(?:lakhs?|lacs?)/);
+    if (lakhM) {
+      const words = lakhM[1].split(/[\s-]+/);
+      let lakhNum = 0;
+      words.forEach(w => { if (nums[w]) lakhNum += nums[w]; });
+      if (lakhNum > 0) total += lakhNum * 100000;
+    }
+    
+    // Thousand (1,000)
+    const thousandM = lower.match(/([\w\s-]+?)\s*thousands?/);
+    if (thousandM) {
+      const words = thousandM[1].split(/[\s-]+/);
+      let thousandNum = 0;
+      words.forEach(w => { if (nums[w]) thousandNum += nums[w]; });
+      if (thousandNum > 0) total += thousandNum * 1000;
+    }
+    
+    // Hundred (100)
+    const hundredM = lower.match(/([\w\s-]+?)\s*hundreds?/);
+    if (hundredM) {
+      const words = hundredM[1].split(/[\s-]+/);
+      let hundredNum = 0;
+      words.forEach(w => { if (nums[w]) hundredNum += nums[w]; });
+      if (hundredNum > 0) total += hundredNum * 100;
+    }
+    
+    // Abbreviated: "15L", "2.5Cr", "500K"
+    const abbrevM = txt.match(/([\d.]+)\s*([LCK])\b/i);
+    if (abbrevM) {
+      const num = parseFloat(abbrevM[1]);
+      const unit = abbrevM[2].toUpperCase();
+      if (unit === "L") total += num * 100000;  // Lakh
+      else if (unit === "C") total += num * 10000000;  // Crore
+      else if (unit === "K") total += num * 1000;  // Thousand
+    }
+    
+    return total > 0 ? total : null;
+  };
+
   // Highest priority: "X-Night Block Value" / "X-Night Total Value" fields (actual totals, not per-night rates)
   for (const k of Object.keys(fields)) {
     if (/\d+[\s-]*night/.test(k) && /(?:block|total)\s*value|total\s*(?:block|amount)/.test(k)) {
-      const n = parseInt(fields[k].replace(/[^0-9]/g, ""));
+      const written = parseWrittenNumber(fields[k]);
+      if (written && written > 100) return written;
+      const n = extractFirstNumber(fields[k]);
       if (n > 0) return n;
     }
   }
   // Also search text for "X-Night Block Value: amount" pattern
-  const mMultiNight = text.match(/\d+[\s-]*night\s*(?:block\s*)?(?:value|total|amount)\s*[:=]?\s*[₹$€£]?\s*([\d,]+)/i);
+  const mMultiNight = text.match(/\d+[\s-]*night\s*(?:block\s*)?(?:value|total|amount)\s*[:=]?\s*[₹$€£Rs\.?]?\s*([\d,]+)/i);
   if (mMultiNight) return parseInt(mMultiNight[1].replace(/,/g, ""));
 
-  // Standard labeled fields — skip per-night annotated values
-  for (const k of ["total amount", "total", "grand total", "total block value", "total value", "total cost", "total price", "net total", "invoice total"]) {
+  // HIGH PRIORITY: Look for GT/GRAND TOTAL/TTL in raw text BEFORE labeled fields
+  // This ensures abbreviated formats like "GT: 1061.41K" are captured correctly
+  // (labeled field extraction might strip the K suffix)
+  
+  // 1. HIGHEST PRIORITY: GT (Grand Total abbreviation)
+  const gtPattern = /\bGT\s*[:=]?\s*(?:[₹$€£]|Rs\.?|USD|INR)?\s*([\d,.]+\s*[KMB]?)/i;
+  const gtMatch = text.match(gtPattern);
+  if (gtMatch) {
+    const n = extractFirstNumber(gtMatch[1]);
+    if (n > 100) return n;
+  }
+  
+  // 2. HIGH PRIORITY: Full "GRAND TOTAL" / "FINAL TOTAL" with Lakh/Crore notation
+  const grandTotalPattern = /(?:grand\s*total|final\s*total|total\s*contract\s*value)\s*[:=]?\s*(?:[₹$€£]|Rs\.?|USD|INR)?\s*([\d,.]+\s*(?:crore|lakh|lac|thousand|[KMB])?|(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]*)+(?:crore|lakh|lac|thousand)(?:[\s,]+(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]*)+(?:crore|lakh|lac|thousand))*)/i;
+  const grandMatch = text.match(grandTotalPattern);
+  if (grandMatch) {
+    const written = parseWrittenNumber(grandMatch[1]);
+    if (written && written > 100) return written;
+    
+    // Handle numeric with Lakh/Crore: "1.44 Crore"
+    const numericLakh = grandMatch[1].match(/([\d,.]+)\s*(?:lakhs?|lacs?)/i);
+    if (numericLakh) {
+      const num = parseFloat(numericLakh[1].replace(/,/g, ""));
+      return Math.round(num * 100000);
+    }
+    const numericCrore = grandMatch[1].match(/([\d,.]+)\s*crores?/i);
+    if (numericCrore) {
+      const num = parseFloat(numericCrore[1].replace(/,/g, ""));
+      return Math.round(num * 10000000);
+    }
+    
+    const n = extractFirstNumber(grandMatch[1]);
+    if (n > 0) return n;
+  }
+  
+  // 3. MEDIUM PRIORITY: TTL (Total abbreviation)
+  const ttlPattern = /\bTTL\s*[:=]?\s*(?:[₹$€£]|Rs\.?|USD|INR)?\s*([\d,.]+\s*[KMB]?)/i;
+  const ttlMatch = text.match(ttlPattern);
+  if (ttlMatch) {
+    const n = extractFirstNumber(ttlMatch[1]);
+    if (n > 100) return n;
+  }
+
+  // Standard labeled fields — PRIORITIZE "GRAND TOTAL" for aggregated amounts
+  // Search in order of priority: grand total > final total > total amount > other totals
+  const priorityLabels = [
+    "grand total", "final total", "final billing", "final payment", "total contract value",
+    "total amount", "net total", "invoice total", "total block value", "total value", "total cost", "total price", "total"
+  ];
+  
+  for (const k of priorityLabels) {
     if (fields[k]) {
       if (/per\s*night/i.test(fields[k])) continue; // skip per-night rate fields
-      const n = parseInt(fields[k].replace(/[^0-9]/g, ""));
+      
+      // Try to parse written number first (Lakh/Crore notation)
+      const written = parseWrittenNumber(fields[k]);
+      if (written && written > 100) return written;
+      
+      // Parse numeric value
+      const n = extractFirstNumber(fields[k]);
       if (n > 0) return n;
     }
   }
+  
+  
+  // Collect ALL total matches and return the LARGEST one (aggregated totals are usually bigger)
+  const allTotals: number[] = [];
+  
   // Fallback: regex on text (skip per-night inline values)
-  const mAll = [...text.matchAll(/(?:total\s*(?:block\s*)?(?:amount|value|price|cost|invoice|charges?))\s*[:=]?\s*[₹$€£]?\s*([\d,]+)/gi)];
+  // Support both ₹/$/€/£ and Rs./USD/INR notation
+  const mAll = [...text.matchAll(/(?:total\s*(?:block\s*)?(?:amount|value|price|cost|invoice|charges?|contract\s*value))\s*[:=]?\s*(?:[₹$€£]|Rs\.?|USD|INR)?\s*([\d,]+)/gi)];
   for (const m of mAll) {
     // Check 30 chars after match for "per night" qualifier
     const after = text.substring(m.index! + m[0].length, m.index! + m[0].length + 30);
     if (/per\s*night/i.test(after)) continue;
-    return parseInt(m[1].replace(/,/g, ""));
+    allTotals.push(parseInt(m[1].replace(/,/g, "")));
   }
-  const m2 = text.match(/[₹$€£]\s*([\d,]+)\s*(?:total|grand\s*total)/i);
-  if (m2) return parseInt(m2[1].replace(/,/g, ""));
+  const m2All = [...text.matchAll(/(?:[₹$€£]|Rs\.?)\s*([\d,]+)\s*(?:total|grand\s*total)/gi)];
+  for (const m of m2All) {
+    allTotals.push(parseInt(m[1].replace(/,/g, "")));
+  }
+  
+  // Also capture section totals for aggregation: "Total Room Revenue: $82,800"
+  const sectionTotals = [...text.matchAll(/(?:total\s+(?:room|meeting|f&b|f\/b|catering|service|revenue|charges?|accommodation))\s*[:=]?\s*(?:[₹$€£]|Rs\.?|USD)?\s*([\d,]+)/gi)];
+  for (const m of sectionTotals) {
+    allTotals.push(parseInt(m[1].replace(/,/g, "")));
+  }
+  
+  // Return the largest total found (likely the grand total)
+  if (allTotals.length > 0) {
+    return Math.max(...allTotals);
+  }
+  
+  // Last resort: scan entire text for largest written number (for paragraph-style contracts)
+  // Look for patterns like "Twenty-Three Lakh Seventy Thousand"
+  const writtenPattern = /((?:(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]*)+(?:crores?|lakhs?|lacs?|thousands?|hundreds?)(?:[\s,]+(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]*)+(?:crores?|lakhs?|lacs?|thousands?|hundreds?))*)/gi;
+  let match;
+  while ((match = writtenPattern.exec(text)) !== null) {
+    const parsed = parseWrittenNumber(match[0]);
+    if (parsed && parsed > 1000) allTotals.push(parsed);
+  }
+  
+  if (allTotals.length > 0) {
+    return Math.max(...allTotals);
+  }
+  
   return 0;
 }
 
 /** Detect currency from text symbols / keywords. */
 function extractCurrency(text: string): string {
-  if (/₹|inr|indian rupee|rs\./i.test(text)) return "INR";
-  if (/\$|usd|us dollar/i.test(text)) return "USD";
-  if (/€|eur\b|euro/i.test(text)) return "EUR";
-  if (/£|gbp|pound/i.test(text)) return "GBP";
+  // ABBREVIATION SUPPORT: Look for currency in abbreviated format
+  // "Currency: INR" or "CCY: USD"
+  const abbrevCurrency = text.match(/(?:currency|ccy)\s*[:=]\s*(INR|USD|EUR|GBP)/i);
+  if (abbrevCurrency) return abbrevCurrency[1].toUpperCase();
+  
+  // Check for Indian Rupee: ₹, INR, Rs., Rs, Rupee
+  if (/₹|\bINR\b|\bRs\.?\s|indian\s+rupee/i.test(text)) return "INR";
+  if (/\$|\bUSD\b|us\s+dollar/i.test(text)) return "USD";
+  if (/€|\bEUR\b|euro/i.test(text)) return "EUR";
+  if (/£|\bGBP\b|pound/i.test(text)) return "GBP";
+  
+  // Fallback: If text contains Indian location/hotel names, assume INR
+  if (/\b(?:Delhi|Mumbai|Bangalore|Chennai|Kolkata|Hyderabad|Pune|Jaipur|Goa|India)\b/i.test(text)) {
+    return "INR";
+  }
+  
   return "";
 }
 
@@ -1855,6 +2545,10 @@ export function extractRooms(
 /**
  * Extract add-ons, services, and inclusions from text.
  * Uses both keyword matching and table data.
+ * 
+ * IMPORTANT: Only extracts GUEST-LEVEL add-ons (things individual guests can select),
+ * NOT event-level services (banquet hall, catering, AV setup etc.) which are paid by
+ * the event organizer, not individual guests.
  */
 export function extractAddOns(
   text: string,
@@ -1865,7 +2559,14 @@ export function extractAddOns(
   const sanitizeName = (n: string) => n
     .replace(/[\r\n]+/g, " ")
     .replace(/\s+/g, " ")
+    // Strip price patterns: ₹1,50,000 | Rs. 50000 | INR 25,000 | $500
+    .replace(/[₹$]\s*[\d,]+(?:\.\d+)?/gi, "")
+    .replace(/(?:rs\.?|inr)\s*[\d,]+(?:\.\d+)?/gi, "")
+    // Strip pax/count info: (150 pax), (100 guests), etc.
+    .replace(/\(\s*\d+\s*(?:pax|guests?|persons?|people|covers?)?\s*\)/gi, "")
+    // Strip trailing numbers and cleanup
     .replace(/\s*\d+$/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 
   /** Returns true if this name looks like noise (file path, date fragment, URL, etc.) */
@@ -1879,45 +2580,48 @@ export function extractAddOns(
     return false;
   };
 
-  // ── Strategy 1: Table rows that look like services (not rooms) ──
+  /**
+   * Returns true if this is an EVENT-LEVEL service (not a guest add-on).
+   * Event-level services are paid by the event organizer, not individual guests.
+   * Examples: Banquet Hall, Catering, AV Setup, Stage, Decoration
+   */
+  const isEventLevelService = (n: string): boolean => {
+    const lower = n.toLowerCase();
+    // Banquet/Hall rental - event level
+    if (/banquet|hall\s*rental|function\s*hall|conference\s*room|meeting\s*room|ballroom/i.test(lower)) return true;
+    // Catering for event (especially with pax/covers) - event level
+    if (/catering|buffet|menu\s*(?:per|for)|food\s*(?:package|service)|beverage\s*(?:package|service)/i.test(lower)) return true;
+    // AV/Stage/Production setup - event level
+    if (/audio\s*\/?\s*visual|a\s*\/?\s*v\s*setup|stage\s*(?:setup|decoration)?|lighting\s*(?:setup)?|sound\s*(?:system|setup)|projector|screen|podium|backdrop|mandap/i.test(lower)) return true;
+    // Event decoration - event level
+    if (/(?:event|hall|venue|stage)\s*decoration|floral\s*(?:arrangement|decoration)|flower\s*(?:arrangement|setup)/i.test(lower)) return true;
+    // Event photography/entertainment - event level
+    if (/(?:event|wedding)\s*photograph|videograph|dj\s*(?:service)?|(?:live\s*)?band|entertainment\s*(?:package)?/i.test(lower)) return true;
+    // Rental items (usually event-level)
+    if (/rental|(?:chair|table|tent|canopy)\s*(?:setup|hire)/i.test(lower)) return true;
+    return false;
+  };
+
+  // ── Strategy 1: Table rows - SKIP most table rows ──
+  // Table rows typically contain event-level services (banquet, catering, AV) 
+  // that the organizer pays for, not guest add-ons.
+  // We only extract items that are clearly guest-level from tables.
   for (const row of tableRows) {
     const desc = row.description;
-    // Skip room-type items (they're handled by extractRooms)
-    if (
-      /^(?:deluxe|standard|premium|executive|royal|superior|twin|double|single|king|queen|club|penthouse)\s+(?:room|suite|villa|cottage|studio)/i.test(
-        desc
-      ) ||
-      /\broom\b.*\b(?:deluxe|suite|standard|premium|executive|superior)\b/i.test(
-        desc
-      )
-    )
-      continue;
-    // Also skip if it ONLY says "Deluxe Rooms", "Standard Rooms" etc.
-    if (
-      /^(?:deluxe|standard|premium|executive|royal|superior)\s+rooms?$/i.test(
-        desc
-      )
-    )
-      continue;
-
-    // Check if it's a service/add-on
-    const isService =
-      /banquet|hall|catering|audio|visual|setup|rental|decoration|photography|dj|music|entertainment|transfer|shuttle|airport|valet|parking|flowers?|stage|lighting|sound|projector|screen|podium|ceremony|food|beverage|drinks?|bar|lounge|menu|buffet|pax|breakfast|lunch|dinner|spa|wifi|internet|gym|pool|laundry|concierge/i.test(
-        desc
-      );
-
-    // If it has numbers and isn't a pure room type, treat it as a service
-    if (
-      (isService || row.numbers.length >= 2) &&
-      !seen.has(desc.toLowerCase())
-    ) {
-      // Double check it's not a room
-      const isDefinitelyRoom =
-        /^(?:deluxe|standard|premium|executive|royal|superior|family|luxury|classic|junior|grand|honeymoon|penthouse|villa|cottage|studio|twin|double|single|king|queen|club|garden|ocean|lake|mountain|valley|pool|city)\s/i.test(
-          desc
-        );
-      if (isDefinitelyRoom) continue;
-
+    const lower = desc.toLowerCase();
+    
+    // Skip room-type items
+    if (/^(?:deluxe|standard|premium|executive|royal|superior|twin|double|single|king|queen|club|penthouse)\s+(?:room|suite|villa|cottage|studio)/i.test(desc)) continue;
+    if (/\broom\b.*\b(?:deluxe|suite|standard|premium|executive|superior)\b/i.test(desc)) continue;
+    if (/^(?:deluxe|standard|premium|executive|royal|superior)\s+rooms?$/i.test(desc)) continue;
+    
+    // Skip event-level services
+    if (isEventLevelService(desc)) continue;
+    
+    // Only extract if it looks like a GUEST-level add-on
+    const isGuestAddOn = /airport\s*(?:transfer|pickup|drop)|spa|breakfast|lunch|dinner|parking|laundry|wifi|wi-?fi|gym|pool|mini\s*bar|room\s*service/i.test(lower);
+    
+    if (isGuestAddOn && !seen.has(lower)) {
       const clean = sanitizeName(desc);
       if (seen.has(clean.toLowerCase())) continue;
       if (isJunkName(clean)) continue;
@@ -1932,41 +2636,31 @@ export function extractAddOns(
   }
 
   // ── Strategy 2: Keyword-based pattern matching ──
-  // Build a lookup of all descriptions already captured in strategy 1 (for dedup)
+  // Only extract GUEST-LEVEL add-ons (things individual guests can select and pay for)
   const tableAddOnNames = addOns.map((a) => a.name.toLowerCase());
 
+  // Guest-level add-ons ONLY - NOT event-level services
   const addOnPatterns = [
+    // Transport
     { pattern: /airport\s*(?:pickup|transfer|drop|shuttle)/i, name: "Airport Transfer" },
-    { pattern: /welcome\s*(?:dinner|drink|cocktail|reception)/i, name: "Welcome Dinner" },
-    { pattern: /(?:mehendi|mehndi|henna)\s*(?:ceremony)?/i, name: "Mehendi Ceremony" },
-    { pattern: /gala\s*(?:night|dinner|event)/i, name: "Gala Night" },
+    // Wellness
     { pattern: /spa\s*(?:package|treatment|session|credit)/i, name: "Spa Package" },
-    { pattern: /breakfast/i, name: "Breakfast" },
-    { pattern: /(?:wi-?fi|internet|wifi)/i, name: "Wi-Fi" },
     { pattern: /(?:gym|fitness)\s*(?:access)?/i, name: "Gym Access" },
     { pattern: /(?:pool|swimming)\s*(?:access)?/i, name: "Pool Access" },
+    // Meals (per-guest)
+    { pattern: /complimentary\s*breakfast/i, name: "Breakfast" },
+    // Services
+    { pattern: /(?:wi-?fi|internet|wifi)/i, name: "Wi-Fi" },
     { pattern: /laundry/i, name: "Laundry Service" },
     { pattern: /parking/i, name: "Parking" },
-    { pattern: /(?:city|sight-?seeing)\s*(?:tour)?/i, name: "City Tour" },
-    { pattern: /photography/i, name: "Photography" },
-    { pattern: /(?:dj|music|entertainment)/i, name: "Entertainment" },
-    { pattern: /decoration/i, name: "Decoration" },
     { pattern: /(?:mini-?bar|minibar)/i, name: "Mini Bar" },
     { pattern: /(?:room\s*service)/i, name: "Room Service" },
     { pattern: /(?:concierge)/i, name: "Concierge" },
     { pattern: /(?:babysitting|childcare|kids\s*club)/i, name: "Childcare" },
-    { pattern: /(?:boat|yacht|cruise)\s*(?:ride|trip)?/i, name: "Boat Trip" },
-    { pattern: /(?:sangeet|sangeeth)/i, name: "Sangeet Ceremony" },
-    { pattern: /(?:haldi)/i, name: "Haldi Ceremony" },
-    { pattern: /(?:cocktail)\s*(?:party|night|event)?/i, name: "Cocktail Party" },
-    { pattern: /(?:audio|a\s*\/?\s*v)\s*(?:visual|setup|equipment)/i, name: "Audio/Visual Setup" },
-    { pattern: /banquet\s*(?:hall|room|rental)/i, name: "Banquet Hall" },
-    { pattern: /(?:conference|meeting)\s*(?:room|hall|facility)/i, name: "Conference Room" },
-    { pattern: /catering\s*(?:service)?/i, name: "Catering" },
-    { pattern: /projector|screen|podium/i, name: "AV Equipment" },
     { pattern: /valet/i, name: "Valet Parking" },
-    { pattern: /(?:flower|floral)\s*(?:arrangement|decoration)?/i, name: "Flower Arrangement" },
-    { pattern: /(?:stage|lighting|sound)\s*(?:setup)?/i, name: "Stage Setup" },
+    // Tours/Activities
+    { pattern: /(?:city|sight-?seeing)\s*(?:tour)?/i, name: "City Tour" },
+    { pattern: /(?:boat|yacht|cruise)\s*(?:ride|trip)?/i, name: "Boat Trip" },
   ];
 
   const lower = text.toLowerCase();
@@ -2029,14 +2723,142 @@ export function extractAddOns(
 }
 
 /**
+ * Extract EVENT-LEVEL services from text and table rows.
+ * These are services paid by the event organizer (not individual guests),
+ * such as banquet hall, catering, AV setup, decoration, etc.
+ */
+export function extractEventServices(
+  text: string,
+  tableRows: TableRow[]
+): ParsedContract["eventServices"] {
+  const services: ParsedContract["eventServices"] = [];
+  const seen = new Set<string>();
+
+  const sanitizeName = (n: string) => n
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/[₹$]\s*[\d,]+(?:\.\d+)?/gi, "")
+    .replace(/(?:rs\.?|inr)\s*[\d,]+(?:\.\d+)?/gi, "")
+    .replace(/\(\s*\d+\s*(?:pax|guests?|persons?|people|covers?)?\s*\)/gi, "")
+    .replace(/\s*\d+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  /**
+   * Returns true if this is an EVENT-LEVEL service.
+   */
+  const isEventLevelService = (n: string): boolean => {
+    const lower = n.toLowerCase();
+    if (/banquet|hall\s*rental|function\s*hall|conference\s*room|meeting\s*room|ballroom/i.test(lower)) return true;
+    if (/catering|buffet|menu\s*(?:per|for)|food\s*(?:package|service)|beverage\s*(?:package|service)/i.test(lower)) return true;
+    if (/audio\s*\/?\s*visual|a\s*\/?\s*v\s*setup|stage\s*(?:setup|decoration)?|lighting\s*(?:setup)?|sound\s*(?:system|setup)|projector|screen|podium|backdrop|mandap/i.test(lower)) return true;
+    if (/(?:event|hall|venue|stage)\s*decoration|floral\s*(?:arrangement|decoration)|flower\s*(?:arrangement|setup)/i.test(lower)) return true;
+    if (/(?:event|wedding)\s*photograph|videograph|dj\s*(?:service)?|(?:live\s*)?band|entertainment\s*(?:package)?/i.test(lower)) return true;
+    if (/rental|(?:chair|table|tent|canopy)\s*(?:setup|hire)/i.test(lower)) return true;
+    return false;
+  };
+
+  // ── Strategy 1: Extract from table rows ──
+  for (const row of tableRows) {
+    const desc = row.description;
+    
+    // Skip room-type items
+    if (/^(?:deluxe|standard|premium|executive|royal|superior|twin|double|single|king|queen|club|penthouse)\s+(?:room|suite|villa|cottage|studio)/i.test(desc)) continue;
+    if (/\broom\b.*\b(?:deluxe|suite|standard|premium|executive|superior)\b/i.test(desc)) continue;
+    if (/^(?:deluxe|standard|premium|executive|royal|superior)\s+rooms?$/i.test(desc)) continue;
+    
+    // Only extract event-level services
+    if (isEventLevelService(desc) && !seen.has(desc.toLowerCase())) {
+      const clean = sanitizeName(desc);
+      if (seen.has(clean.toLowerCase())) continue;
+      if (clean.length < 3) continue;
+      seen.add(clean.toLowerCase());
+      const { rate } = interpretTableRow(row.numbers);
+      
+      // Extract description from pax info if present
+      const paxMatch = desc.match(/\((\d+\s*(?:pax|guests?|persons?|people|covers?))\)/i);
+      const description = paxMatch ? paxMatch[1] : undefined;
+      
+      services.push({
+        name: clean,
+        price: rate || 0,
+        description,
+      });
+    }
+  }
+
+  // ── Strategy 2: Pattern-based extraction for event services ──
+  const eventServicePatterns = [
+    { pattern: /banquet\s*(?:hall|room|rental)/i, name: "Banquet Hall" },
+    { pattern: /(?:conference|meeting)\s*(?:room|hall|facility)/i, name: "Conference Room" },
+    { pattern: /catering\s*(?:service|package)?(?:\s*\([\d\s,pax]+\))?/i, name: "Catering" },
+    { pattern: /(?:audio|a\s*\/?\s*v)\s*(?:visual|setup|equipment)/i, name: "Audio/Visual Setup" },
+    { pattern: /(?:stage|lighting|sound)\s*(?:setup)?/i, name: "Stage & Lighting" },
+    { pattern: /(?:flower|floral)\s*(?:arrangement|decoration)?/i, name: "Floral Decoration" },
+    { pattern: /(?:event|venue|hall)\s*decoration/i, name: "Venue Decoration" },
+    { pattern: /(?:dj|music|entertainment)\s*(?:service|package)?/i, name: "Entertainment" },
+    { pattern: /(?:wedding|event)\s*photograph(?:y|er)?/i, name: "Event Photography" },
+    { pattern: /videograph(?:y|er)?/i, name: "Videography" },
+    { pattern: /(?:chair|table|tent|canopy)\s*(?:setup|rental|hire)/i, name: "Furniture Rental" },
+    { pattern: /projector|screen|podium/i, name: "AV Equipment" },
+  ];
+
+  const lower = text.toLowerCase();
+
+  for (const { pattern, name } of eventServicePatterns) {
+    if (seen.has(name.toLowerCase())) continue;
+
+    const match = lower.match(pattern);
+    if (match) {
+      const idx = lower.indexOf(match[0]);
+      const lineStart = lower.lastIndexOf("\n", idx);
+      const lineEnd = lower.indexOf("\n", idx + match[0].length);
+      const currentLine = lower.substring(
+        lineStart >= 0 ? lineStart : 0,
+        lineEnd >= 0 ? lineEnd : lower.length
+      );
+
+      // Look for price in the line
+      let price = 0;
+      const priceMatch = currentLine.match(/[₹$]\s*([\d,]+)|(?:rs\.?|inr)\s*([\d,]+)/i);
+      if (priceMatch) {
+        price = parseInt((priceMatch[1] || priceMatch[2]).replace(/,/g, ""));
+      }
+
+      // Only add if it has a meaningful price (event services usually have prices)
+      if (price > 0 && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        services.push({ name, price, description: undefined });
+      }
+    }
+  }
+
+  return services;
+}
+
+/**
  * Extract attrition/cancellation rules from text.
  * Handles 9+ pattern variants including "within X days", "incur X% charge",
  * labeled percentages, and standalone penalty statements.
  */
 function extractAttritionRules(
-  text: string
+  text: string,
+  checkInDate?: string
 ): ParsedContract["attritionRules"] {
   const rules: ParsedContract["attritionRules"] = [];
+  
+  // Helper: compute date X days before check-in
+  const computeRelativeDate = (daysBefore: number): string => {
+    if (!checkInDate) return "";
+    try {
+      const checkIn = new Date(checkInDate);
+      if (isNaN(checkIn.getTime())) return "";
+      checkIn.setDate(checkIn.getDate() - daysBefore);
+      return checkIn.toISOString().split("T")[0];
+    } catch {
+      return "";
+    }
+  };
 
   // Focus on the attrition/cancellation section if it exists
   const attritionIdx = text
@@ -2080,10 +2902,11 @@ function extractAttritionRules(
     const daysBeforePattern =
       /(\d+)\s*days?\s*(?:before|prior|ahead|in\s*advance).*?(\d+)\s*%/gi;
     while ((m = daysBeforePattern.exec(searchText)) !== null) {
+      const daysBefore = parseInt(m[1]);
       rules.push({
-        releaseDate: "",
+        releaseDate: computeRelativeDate(daysBefore),
         releasePercent: parseInt(m[2]),
-        description: `Release ${parseInt(m[2])}% of rooms ${parseInt(m[1])} days prior to check-in`,
+        description: `Release ${parseInt(m[2])}% of rooms ${daysBefore} days prior to check-in`,
       });
     }
   }
@@ -2093,8 +2916,9 @@ function extractAttritionRules(
     const percentDaysPattern =
       /(\d+)\s*%\s*(?:.*?)(\d+)\s*days?\s*(?:before|prior|ahead|in\s*advance)/gi;
     while ((m = percentDaysPattern.exec(searchText)) !== null) {
+      const daysBefore = parseInt(m[2]);
       rules.push({
-        releaseDate: "",
+        releaseDate: computeRelativeDate(daysBefore),
         releasePercent: parseInt(m[1]),
         description: `Release ${parseInt(m[1])}% of rooms ${parseInt(m[2])} days prior to check-in`,
       });
@@ -2106,10 +2930,11 @@ function extractAttritionRules(
     const withinDaysPattern =
       /(?:cancellation|cancel)\s*(?:within|inside|less\s*than)\s*(\d+)\s*days?\s*(?:of|before|from)?\s*(?:the\s*)?(?:event|check[\s-]*in|arrival|function)?[^.]*?(\d+)\s*%\s*(?:charge|penalty|fee|of\s*(?:the\s*)?total|cancellation)/gi;
     while ((m = withinDaysPattern.exec(searchText)) !== null) {
+      const daysBefore = parseInt(m[1]);
       rules.push({
-        releaseDate: "",
+        releaseDate: computeRelativeDate(daysBefore),
         releasePercent: parseInt(m[2]),
-        description: `${parseInt(m[2])}% cancellation charge within ${parseInt(m[1])} days of the event`,
+        description: `${parseInt(m[2])}% cancellation charge within ${daysBefore} days of the event`,
       });
     }
   }
@@ -2119,10 +2944,11 @@ function extractAttritionRules(
     const incurPattern =
       /(?:cancellation\s*)?(?:within|inside)\s*(\d+)\s*days?[^.]*?(?:will\s*)?(?:incur|attract|result\s*in|lead\s*to|be\s*subject\s*to)\s*(\d+)\s*%/gi;
     while ((m = incurPattern.exec(searchText)) !== null) {
+      const daysBefore = parseInt(m[1]);
       rules.push({
-        releaseDate: "",
+        releaseDate: computeRelativeDate(daysBefore),
         releasePercent: parseInt(m[2]),
-        description: `${parseInt(m[2])}% charge for cancellation within ${parseInt(m[1])} days`,
+        description: `${parseInt(m[2])}% charge for cancellation within ${daysBefore} days`,
       });
     }
   }
@@ -2306,17 +3132,39 @@ export async function extractColorsFromImage(
     const sharp = (await import("sharp")).default;
     const { dominant } = await sharp(buffer).stats();
 
-    const primary = rgbToHex(dominant.r, dominant.g, dominant.b);
-    const secondary = rgbToHex(
-      Math.min(255, dominant.r + 100),
-      Math.min(255, dominant.g + 100),
-      Math.min(255, dominant.b + 100)
-    );
-    const accent = rgbToHex(
-      Math.min(255, Math.abs(dominant.r - 40) + 80),
-      Math.min(255, Math.abs(dominant.g - 20) + 60),
-      Math.min(255, Math.abs(dominant.b + 30))
-    );
+    // Check if the dominant color is too dark or too light for UI
+    const brightness = (dominant.r * 299 + dominant.g * 587 + dominant.b * 114) / 1000;
+    
+    let primary: string;
+    let secondary: string;
+    let accent: string;
+    
+    if (brightness < 30) {
+      // Too dark - use a warmer fallback
+      primary = "#1e40af"; // Deep blue
+      secondary = "#f0f9ff"; // Light blue
+      accent = "#3b82f6"; // Bright blue
+    } else if (brightness > 240) {
+      // Too light/white - use the fallback colors
+      primary = "#6366f1"; // Indigo
+      secondary = "#f5f3ff"; // Light purple
+      accent = "#8b5cf6"; // Purple
+    } else {
+      // Good color - use it
+      primary = rgbToHex(dominant.r, dominant.g, dominant.b);
+      // Create a lighter secondary (pastel version)
+      secondary = rgbToHex(
+        Math.min(255, dominant.r + 120),
+        Math.min(255, dominant.g + 120),
+        Math.min(255, dominant.b + 120)
+      );
+      // Create a complementary accent
+      accent = rgbToHex(
+        Math.min(255, Math.abs(255 - dominant.r)),
+        Math.min(255, Math.abs(200 - dominant.g + 55)),
+        Math.min(255, dominant.b + 50)
+      );
+    }
 
     return { primary, secondary, accent };
   } catch (error) {
@@ -2428,6 +3276,7 @@ export async function parseContractLocally(
   // ── Structured arrays ──────────────────────────────────────────────────────
   const rooms = extractRooms(text, tableRows);
   const addOns = extractAddOns(text, tableRows);
+  const eventServices = extractEventServices(text, tableRows);
   const attritionRules = extractAttritionRules(text);
 
   // ── Extended metadata ──────────────────────────────────────────────────────
@@ -2492,6 +3341,7 @@ export async function parseContractLocally(
     // Structured arrays
     rooms: rooms.length > 0 ? rooms : [{ roomType: "Standard Room", rate: 0, quantity: 1 }],
     addOns,
+    eventServices,
     attritionRules,
   };
 
@@ -2606,9 +3456,7 @@ export async function parseInviteLocally(
     primaryColor: colors.primary,
     secondaryColor: colors.secondary,
     accentColor: colors.accent,
-    description: text
-      ? "Event details extracted from uploaded document."
-      : "Colors extracted from uploaded image. Please enter event name and type manually.",
+    description: "", // Will be generated below based on extracted details
   };
 
   // Enrich with venue, dates, and agent contact if text is available
@@ -2637,7 +3485,253 @@ export async function parseInviteLocally(
 
     const iAgent = extractAgentContact(text, iFields);
     if (iAgent) data.agentContact = iAgent;
+    
+    // Generate meaningful description from extracted details
+    data.description = generateEventDescription(data);
+  } else {
+    data.description = "Colors extracted from uploaded image. Please enter event name and type manually.";
   }
 
   return { success: true, data };
+}
+
+/**
+ * Generate a meaningful event description from extracted data.
+ */
+function generateEventDescription(data: ParsedInvite): string {
+  const parts: string[] = [];
+  
+  // Event type intro
+  const eventTypeLabels: Record<string, string> = {
+    wedding: "Join us for a beautiful wedding celebration",
+    conference: "You are invited to attend this conference",
+    corporate: "We invite you to this corporate event",
+    gala: "Join us for an elegant gala evening",
+    seminar: "You are invited to this informative seminar",
+    workshop: "Join us for this interactive workshop",
+    retreat: "Experience this exclusive retreat",
+    party: "Celebrate with us at this special party",
+    event: "You are cordially invited to this event",
+  };
+  
+  const intro = eventTypeLabels[data.eventType || "event"] || "You are cordially invited to this event";
+  parts.push(intro);
+  
+  // Add venue details
+  if (data.venue) {
+    parts.push(`at ${data.venue}`);
+  }
+  
+  // Add location
+  if (data.location && data.location !== data.venue) {
+    parts.push(`in ${data.location}`);
+  }
+  
+  // Add date details
+  if (data.checkIn) {
+    const dateObj = new Date(data.checkIn);
+    if (!isNaN(dateObj.getTime())) {
+      const options: Intl.DateTimeFormatOptions = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      };
+      const formattedDate = dateObj.toLocaleDateString('en-US', options);
+      
+      if (data.nights && data.nights > 1) {
+        parts.push(`— spanning ${data.nights} nights starting ${formattedDate}`);
+      } else {
+        parts.push(`on ${formattedDate}`);
+      }
+    }
+  }
+  
+  // Build the description
+  let description = parts.join(" ");
+  
+  // Ensure it ends with a period
+  if (!description.endsWith(".")) {
+    description += ".";
+  }
+  
+  // Add a welcoming closing line
+  if (data.eventType === "wedding") {
+    description += " Your presence will make this occasion truly special.";
+  } else if (data.eventType === "conference" || data.eventType === "seminar") {
+    description += " We look forward to your participation.";
+  } else {
+    description += " We look forward to seeing you there.";
+  }
+  
+  return description;
+}
+
+/**
+ * Parse contract from plain text string (for testing purposes).
+ * This bypasses PDF/image extraction and directly parses the text.
+ */
+export async function parseContractFromText(
+  text: string
+): Promise<ParseResult<ParsedContract>> {
+  // Normalize text first (OCR fixes, spacing, etc.)
+  const normalizedText = normalizeText(text);
+  
+  // Validate content
+  const validation = validateContractText(normalizedText);
+  if (!validation.isValid) {
+    return {
+      success: false,
+      error: validation.error,
+      validation,
+    };
+  }
+
+  // Extract labeled fields
+  const fields = extractLabeledFields(normalizedText);
+
+  // Parse table data
+  const tableRows = parseTableRows(normalizedText);
+
+  // ── Core fields ────────────────────────────────────────────────────────────
+  const venue = extractVenue(normalizedText, fields);
+  const location = extractLocation(normalizedText, fields);
+  const [checkIn, checkOut] = extractDates(normalizedText, fields);
+  const eventType = detectEventType(normalizedText);
+  const eventName = extractEventName(normalizedText, eventType, fields);
+  const clientName = extractClientName(normalizedText, fields);
+
+  // ── Structured arrays ──────────────────────────────────────────────────────
+  const rooms = extractRooms(normalizedText, tableRows);
+  const addOns = extractAddOns(normalizedText, tableRows);
+  const eventServices = extractEventServices(normalizedText, tableRows);
+  const attritionRules = extractAttritionRules(normalizedText, checkIn);
+
+  // ── Extended metadata ──────────────────────────────────────────────────────
+  const contractNo = extractContractNo(normalizedText, fields);
+  const issueDate = extractIssueDate(normalizedText, fields);
+  const validUntil = extractValidUntil(normalizedText, fields);
+  const groupCode = extractGroupCode(normalizedText, fields);
+  const gstin = extractGSTIN(normalizedText, fields);
+  const expectedGuests = extractExpectedGuests(normalizedText, fields);
+  const nights = extractNights(normalizedText, fields);
+  // If no explicit nights found, calculate from check-in/check-out dates
+  const resolvedNights =
+    nights ||
+    (() => {
+      if (checkIn && checkOut) {
+        const d1 = new Date(checkIn),
+          d2 = new Date(checkOut);
+        if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) {
+          const diff = Math.round((d2.getTime() - d1.getTime()) / 86400000);
+          if (diff > 0 && diff < 90) return diff;
+        }
+      }
+      return 0;
+    })();
+
+  // ── Financial ──────────────────────────────────────────────────────────────
+  const totalAmount = extractTotalAmount(normalizedText, fields);
+  const currency = extractCurrency(normalizedText);
+  const taxInfo = extractTaxInfo(normalizedText);
+  const paymentTerms = extractPaymentTerms(normalizedText, fields);
+  const earlyCheckIn = extractEarlyCheckIn(normalizedText);
+  const lateCheckOut = extractLateCheckOut(normalizedText);
+  const hotelContact = extractHotelContact(normalizedText, fields);
+  const agentContact = extractAgentContact(normalizedText, fields);
+  const signatories = extractSignatories(normalizedText);
+
+  // ── Calculate extraction confidence and warnings ──────────────────────────
+  const warnings: string[] = [];
+  let confidenceScore = 100;
+  
+  // Venue check
+  if (!venue || venue === "Unknown Venue") {
+    warnings.push("Venue name could not be extracted - please enter manually");
+    confidenceScore -= 20;
+  }
+  
+  // Dates check
+  if (!checkIn || !checkOut) {
+    warnings.push("Check-in/check-out dates incomplete - please verify dates");
+    confidenceScore -= 15;
+  }
+  
+  // Rooms check
+  if (rooms.length === 0) {
+    warnings.push("No room blocks found - add rooms manually");
+    confidenceScore -= 15;
+  } else {
+    const zeroRateRooms = rooms.filter(r => r.rate === 0 || r.rate === undefined);
+    if (zeroRateRooms.length > 0) {
+      warnings.push(`${zeroRateRooms.length} room(s) have ₹0 rate - verify pricing`);
+      confidenceScore -= 10;
+    }
+  }
+  
+  // Attrition rules check
+  const emptyDateRules = attritionRules.filter(r => !r.releaseDate);
+  if (emptyDateRules.length > 0) {
+    warnings.push("Some attrition deadlines have no specific date");
+    confidenceScore -= 5;
+  }
+  
+  // Event name check
+  if (!eventName) {
+    warnings.push("Event name not detected - please enter manually");
+    confidenceScore -= 10;
+  }
+  
+  // Location check
+  if (!location || location === "Unknown Location") {
+    confidenceScore -= 5;
+  }
+  
+  // Ensure score doesn't go below 0
+  confidenceScore = Math.max(0, Math.min(100, confidenceScore));
+
+  const data: ParsedContract = {
+    // Core
+    venue: venue || "Unknown Venue",
+    location: location || "Unknown Location",
+    checkIn: checkIn || "",
+    checkOut: checkOut || "",
+    eventName: eventName || "",
+    eventType: eventType || "event",
+    clientName: clientName || "",
+    // Confidence
+    confidenceScore,
+    extractionWarnings: warnings.length > 0 ? warnings : undefined,
+    // Contract metadata
+    contractNo: contractNo || undefined,
+    issueDate: issueDate || undefined,
+    validUntil: validUntil || undefined,
+    groupCode: groupCode || undefined,
+    gstin: gstin || undefined,
+    // Headcount / duration
+    expectedGuests: expectedGuests || undefined,
+    nights: resolvedNights || undefined,
+    // Financial
+    totalAmount: totalAmount || undefined,
+    currency: currency || undefined,
+    taxInfo: taxInfo || undefined,
+    paymentTerms: paymentTerms || undefined,
+    // Contacts
+    hotelContact: hotelContact || undefined,
+    agentContact: agentContact || undefined,
+    signatories: signatories.length > 0 ? signatories : undefined,
+    // Policies
+    earlyCheckIn: earlyCheckIn || undefined,
+    lateCheckOut: lateCheckOut || undefined,
+    // Structured arrays
+    rooms:
+      rooms.length > 0
+        ? rooms
+        : [{ roomType: "Standard Room", rate: 0, quantity: 1 }],
+    addOns,
+    eventServices,
+    attritionRules,
+  };
+
+  return { success: true, data, validation };
 }

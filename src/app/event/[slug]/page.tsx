@@ -4,7 +4,7 @@ import Link from "next/link";
 import { formatDate, formatCurrency, daysUntil } from "@/lib/utils";
 import { Calendar, MapPin, Hotel, Users, ArrowRight, Sparkles, Star, Check, Heart, Clock, Share2, MessageSquare, AlertTriangle, Gift, Mail, ListChecks } from "lucide-react";
 import { Countdown } from "@/components/ui/countdown";
-import { MicrositeBottomNav, MicrositeSocialProof, MicrositeCopyLink, MicrositeWhatsAppShare, LanguageToggle, T } from "./microsite-extras";
+import { MicrositeBottomNav, MicrositeSocialProof, MicrositeCopyLink, MicrositeWhatsAppShare, MicrositeCalendarExport, LanguageToggle, T } from "./microsite-extras";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -157,13 +157,24 @@ export default async function MicrositePage({
         />
 
         <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
-          {/* Date Badge */}
-          <div 
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium mb-8 backdrop-blur-sm border shadow-sm"
-            style={{ backgroundColor: `${event.primaryColor}08`, borderColor: `${event.primaryColor}20`, color: event.primaryColor }}
-          >
-            <Calendar className="h-4 w-4" />
-            {formatDate(event.checkIn)} – {formatDate(event.checkOut)}
+          {/* Date Badge with Calendar Export */}
+          <div className="inline-flex flex-wrap items-center justify-center gap-2 mb-8">
+            <div 
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium backdrop-blur-sm border shadow-sm"
+              style={{ backgroundColor: `${event.primaryColor}08`, borderColor: `${event.primaryColor}20`, color: event.primaryColor }}
+            >
+              <Calendar className="h-4 w-4" />
+              {formatDate(event.checkIn)} – {formatDate(event.checkOut)}
+            </div>
+            <MicrositeCalendarExport
+              eventName={event.name}
+              venue={event.venue || ""}
+              location={event.location || ""}
+              checkIn={event.checkIn.toISOString()}
+              checkOut={event.checkOut.toISOString()}
+              description={event.description || undefined}
+              primaryColor={event.primaryColor}
+            />
           </div>
 
           <p className="text-sm uppercase tracking-[0.3em] mb-4 font-semibold" style={{ color: event.accentColor }}>

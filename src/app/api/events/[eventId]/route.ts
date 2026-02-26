@@ -51,7 +51,10 @@ export async function PATCH(
         ...(body.checkOut && { checkOut: new Date(body.checkOut) }),
         ...(body.primaryColor && { primaryColor: body.primaryColor }),
         ...(body.secondaryColor && { secondaryColor: body.secondaryColor }),
+        ...(body.accentColor && { accentColor: body.accentColor }),
         ...(body.type && { type: body.type }),
+        // Description can be empty string, so use hasOwnProperty check
+        ...(Object.prototype.hasOwnProperty.call(body, 'description') && { description: body.description || '' }),
       },
       include: {
         roomBlocks: true,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Activity,
   UserPlus,
@@ -14,6 +14,7 @@ import {
   Download,
   Clock,
   Filter,
+  RefreshCw,
 } from "lucide-react";
 
 interface LogEntry {
@@ -61,16 +62,39 @@ const actionColors: Record<string, string> = {
 export function ActivityLog({ eventId }: ActivityLogProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [actionFilter, setActionFilter] = useState<string>("all");
+  const [newEntryIds, setNewEntryIds] = useState<Set<string>>(new Set());
+  const previousLogsRef = useRef<string[]>([]);
 
-  const fetchActivity = () => {
+  const fetchActivity = (isManualRefresh = false) => {
+    if (isManualRefresh) setRefreshing(true);
     fetch(`/api/events/${eventId}/activity?limit=50`)
       .then((res) => res.json())
       .then((data) => {
-        setLogs(Array.isArray(data) ? data : []);
+        const newLogs = Array.isArray(data) ? data : [];
+        
+        // Find new entries (entries that weren't in previous fetch)
+        if (previousLogsRef.current.length > 0) {
+          const newIds = newLogs
+            .filter((log: LogEntry) => !previousLogsRef.current.includes(log.id))
+            .map((log: LogEntry) => log.id);
+          if (newIds.length > 0) {
+            setNewEntryIds(new Set(newIds));
+            // Clear the "new" highlight after 3 seconds
+            setTimeout(() => setNewEntryIds(new Set()), 3000);
+          }
+        }
+        
+        previousLogsRef.current = newLogs.map((log: LogEntry) => log.id);
+        setLogs(newLogs);
         setLoading(false);
+        setRefreshing(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        setLoading(false);
+        setRefreshing(false);
+      });
   };
 
   useEffect(() => {
@@ -163,6 +187,15 @@ export function ActivityLog({ eventId }: ActivityLogProps) {
         >
           <Download className="w-3 h-3" /> Export
         </button>
+        <button
+          onClick={() => fetchActivity(true)}
+          disabled={refreshing}
+          className="inline-flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-50 ml-3"
+          title="Refresh activity log"
+        >
+          <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} /> 
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
       </div>
 
       {/* Timeline line */}
@@ -177,9 +210,9 @@ export function ActivityLog({ eventId }: ActivityLogProps) {
           const relativeTime = getRelativeTime(time);
 
           return (
-            <li key={log.id} className="flex gap-3 relative">
+            <li key={log.id} className={`flex gap-3 relative transition-all duration-500 ${newEntryIds.has(log.id) ? 'animate-pulse bg-blue-50 dark:bg-blue-900/20 -mx-2 px-2 rounded-lg' : ''}`}>
               <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 ${colorClass}`}
+                className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 transition-transform duration-300 ${newEntryIds.has(log.id) ? 'scale-110 ring-2 ring-blue-400 ring-offset-2 dark:ring-offset-zinc-900' : ''} ${colorClass}`}
               >
                 <Icon className="w-4 h-4" />
               </div>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Check, ArrowLeft, ArrowRight, Loader2, User, Hotel, Sparkles, CreditCard, PartyPopper, Shield, Clock, QrCode, FileText, ExternalLink, BadgePercent } from "lucide-react";
 import { ConfettiExplosion, useConfetti } from "@/components/ui/confetti";
+import { QRCode as LocalQRCode } from "@/components/ui/qr-code";
 
 interface RoomBlock {
   id: string;
@@ -78,6 +79,7 @@ export default function BookingClient({ event }: { event: EventData }) {
   };
 
   const [bookingError, setBookingError] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
   const [discountInfo, setDiscountInfo] = useState<{ percent: number; originalAmount: number; finalAmount: number } | null>(null);
   const [processingPhase, setProcessingPhase] = useState("");
   const confetti = useConfetti();
@@ -103,7 +105,11 @@ export default function BookingClient({ event }: { event: EventData }) {
     const errors: Record<string, string> = {};
     if (!guestName.trim()) errors.name = "Name is required";
     if (guestEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)) errors.email = "Invalid email format";
-    if (guestPhone && !/^(\+91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}$/.test(guestPhone.replace(/\s/g, ''))) errors.phone = "Enter valid Indian phone (+91 XXXXX XXXXX)";
+    // More flexible phone validation: accepts +91, various country codes, or 10+ digit numbers
+    const phoneClean = guestPhone.replace(/[\s\-().]/g, '');
+    if (guestPhone && !/^(\+?\d{1,4})?[6-9]?\d{9,14}$/.test(phoneClean)) {
+      errors.phone = "Enter valid phone number";
+    }
     if (!selectedRoom) errors.room = "Please select a room";
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
@@ -277,19 +283,11 @@ export default function BookingClient({ event }: { event: EventData }) {
                     <QrCode className="h-3.5 w-3.5" />
                     <span>Your Check-In QR Code</span>
                   </div>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {!qrLoaded && (
-                    <div className="mx-auto w-[150px] h-[150px] rounded-lg bg-gray-100 dark:bg-zinc-800 animate-pulse flex items-center justify-center">
-                      <QrCode className="h-8 w-8 text-gray-300 dark:text-zinc-600" />
-                    </div>
-                  )}
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(bookingId)}`}
-                    alt="Check-in QR Code"
-                    width={150}
-                    height={150}
-                    className={`mx-auto rounded-lg ${qrLoaded ? '' : 'hidden'}`}
-                    onLoad={() => setQrLoaded(true)}
+                  {/* Local QR code generation - no external API dependency */}
+                  <LocalQRCode 
+                    data={bookingId} 
+                    size={150} 
+                    className="mx-auto rounded-lg shadow-sm"
                   />
                   <p className="text-[10px] text-gray-400 dark:text-zinc-500 mt-2 font-mono">{bookingId.slice(0, 8)}...</p>
                 </div>
@@ -786,8 +784,23 @@ export default function BookingClient({ event }: { event: EventData }) {
             </button>
           </div>
           {bookingError && (
-            <div className="mt-2 px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-center">
-              <p className="text-xs text-red-600 font-medium">{bookingError}</p>
+            <div className="mt-2 px-3 py-2.5 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 text-center space-y-2">
+              <p className="text-xs text-red-600 dark:text-red-400 font-medium">{bookingError}</p>
+              {retryCount < 3 && (
+                <button
+                  onClick={() => {
+                    setRetryCount(prev => prev + 1);
+                    setBookingError("");
+                    handleSubmit();
+                  }}
+                  className="text-xs text-red-600 dark:text-red-400 underline hover:no-underline font-medium"
+                >
+                  Try again ({3 - retryCount} attempts left)
+                </button>
+              )}
+              {retryCount >= 3 && (
+                <p className="text-[10px] text-red-500">Please contact support or try again later</p>
+              )}
             </div>
           )}
           <p className="text-center text-[10px] text-gray-400 mt-2.5 flex items-center justify-center gap-1">

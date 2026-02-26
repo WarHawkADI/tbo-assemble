@@ -97,8 +97,10 @@ export default async function EventOverviewPage({
               checkIn: event.checkIn.toISOString(),
               checkOut: event.checkOut.toISOString(),
               type: event.type,
+              description: event.description || '',
               primaryColor: event.primaryColor,
               secondaryColor: event.secondaryColor,
+              accentColor: event.accentColor,
             }}
           />
           <EventOverviewActions slug={event.slug} eventId={eventId} currentStatus={event.status} eventName={event.name} />

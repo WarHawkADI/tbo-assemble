@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Sparkles, Upload, FileText, Image, Check, Loader2, Zap, FileCheck, ArrowLeft, Pencil, Plus, Trash2, Save } from "lucide-react";
+import { Sparkles, Upload, FileText, Image, Check, Loader2, Zap, FileCheck, ArrowLeft, ArrowRight, Pencil, Plus, Trash2, Save, Building2 } from "lucide-react";
 import { useToast } from "@/components/ui/toaster";
 import Link from "next/link";
 
@@ -22,6 +22,12 @@ interface AddOn {
   price?: number;
 }
 
+interface EventService {
+  name: string;
+  price?: number;
+  description?: string;
+}
+
 interface AttritionRule {
   releaseDate: string;
   releasePercent: number;
@@ -35,6 +41,7 @@ interface ParsedEventData {
     primaryColor?: string;
     secondaryColor?: string;
     accentColor?: string;
+    description?: string;
   };
   contract?: {
     venue?: string;
@@ -44,10 +51,60 @@ interface ParsedEventData {
     eventName?: string;
     eventType?: string;
     clientName?: string;
+    confidenceScore?: number;
+    extractionWarnings?: string[];
     rooms?: RoomBlock[];
     addOns?: AddOn[];
+    eventServices?: EventService[];
     attritionRules?: AttritionRule[];
   };
+}
+
+// Auto-generate event description from parsed data
+function generateEventDescription(data: ParsedEventData): string {
+  const eventName = data.invite?.eventName || data.contract?.eventName || "Event";
+  const eventType = data.invite?.eventType || data.contract?.eventType || "event";
+  const venue = data.contract?.venue || "";
+  const location = data.contract?.location || "";
+  const checkIn = data.contract?.checkIn;
+  const checkOut = data.contract?.checkOut;
+  
+  const nights = checkIn && checkOut 
+    ? Math.ceil((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24))
+    : 0;
+  
+  const totalRooms = data.contract?.rooms?.reduce((sum, r) => sum + (r.quantity || 0), 0) || 0;
+  const lowestRate = data.contract?.rooms && data.contract.rooms.length > 0
+    ? Math.min(...data.contract.rooms.map(r => r.rate || 0).filter(r => r > 0))
+    : 0;
+  
+  const typeLabels: Record<string, string> = {
+    wedding: "a beautiful wedding celebration",
+    conference: "an inspiring conference",
+    corporate: "an exclusive corporate event",
+    birthday: "a memorable birthday celebration",
+    anniversary: "a special anniversary celebration",
+    seminar: "an engaging seminar",
+    gala: "an elegant gala evening",
+    event: "an unforgettable event"
+  };
+  
+  const typeDesc = typeLabels[eventType.toLowerCase()] || typeLabels.event;
+  
+  let desc = `Join us for ${typeDesc}`;
+  if (venue && venue !== "Unknown Venue") desc += ` at ${venue}`;
+  if (location && location !== "Unknown Location") desc += `, ${location}`;
+  desc += ".";
+  
+  if (nights > 0) {
+    desc += ` Experience ${nights} night${nights > 1 ? 's' : ''} of celebration`;
+    if (totalRooms > 0 && lowestRate > 0) {
+      desc += ` with rooms starting at ₹${lowestRate.toLocaleString('en-IN')}/night`;
+    }
+    desc += ".";
+  }
+  
+  return desc;
 }
 
 export default function OnboardingPage() {
@@ -60,6 +117,28 @@ export default function OnboardingPage() {
   const [error, setError] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState("");
+  const [contractPreview, setContractPreview] = useState<string | null>(null);
+  const [invitePreview, setInvitePreview] = useState<string | null>(null);
+  
+  // Generate preview URL when file is selected
+  const handleContractFile = (file: File | null) => {
+    setContractFile(file);
+    if (file && file.type.startsWith('image/')) {
+      setContractPreview(URL.createObjectURL(file));
+    } else {
+      setContractPreview(null);
+    }
+  };
+  
+  const handleInviteFile = (file: File | null) => {
+    setInviteFile(file);
+    if (file && (file.type.startsWith('image/') || file.type.includes('png') || file.type.includes('jpg') || file.type.includes('jpeg'))) {
+      setInvitePreview(URL.createObjectURL(file));
+    } else {
+      setInvitePreview(null);
+    }
+  };
 
   // Helper to update a top-level invite field
   const updateInvite = (field: string, value: string) => {
@@ -123,6 +202,54 @@ export default function OnboardingPage() {
     });
   };
 
+  // Helper to update event services
+  const updateEventService = (index: number, field: keyof EventService, value: string | number) => {
+    setParsedData((prev) => {
+      if (!prev?.contract?.eventServices) return prev;
+      const eventServices = [...prev.contract.eventServices];
+      eventServices[index] = { ...eventServices[index], [field]: value };
+      return { ...prev, contract: { ...prev.contract, eventServices } };
+    });
+  };
+
+  const addEventService = () => {
+    setParsedData((prev) => {
+      if (!prev) return prev;
+      const eventServices = [...(prev.contract?.eventServices || []), { name: "New Service", price: 0, description: "" }];
+      return { ...prev, contract: { ...prev.contract, eventServices } };
+    });
+  };
+
+  const removeEventService = (index: number) => {
+    setParsedData((prev) => {
+      if (!prev?.contract?.eventServices) return prev;
+      const eventServices = prev.contract.eventServices.filter((_, i) => i !== index);
+      return { ...prev, contract: { ...prev.contract, eventServices } };
+    });
+  };
+
+  // Move an add-on to event services
+  const moveAddOnToEventService = (index: number) => {
+    setParsedData((prev) => {
+      if (!prev?.contract?.addOns) return prev;
+      const addon = prev.contract.addOns[index];
+      const addOns = prev.contract.addOns.filter((_, i) => i !== index);
+      const eventServices = [...(prev.contract.eventServices || []), { name: addon.name, price: addon.price || 0, description: "" }];
+      return { ...prev, contract: { ...prev.contract, addOns, eventServices } };
+    });
+  };
+
+  // Move an event service to guest add-ons
+  const moveEventServiceToAddOn = (index: number) => {
+    setParsedData((prev) => {
+      if (!prev?.contract?.eventServices) return prev;
+      const service = prev.contract.eventServices[index];
+      const eventServices = prev.contract.eventServices.filter((_, i) => i !== index);
+      const addOns = [...(prev.contract.addOns || []), { name: service.name, price: service.price || 0, isIncluded: false }];
+      return { ...prev, contract: { ...prev.contract, addOns, eventServices } };
+    });
+  };
+
   // Helper to update attrition rules
   const updateAttrition = (index: number, field: keyof AttritionRule, value: string | number) => {
     setParsedData((prev) => {
@@ -157,6 +284,23 @@ export default function OnboardingPage() {
     setStep("processing");
     setError("");
 
+    // Show progressive processing messages
+    const messages = [
+      "Reading document structure...",
+      "Extracting venue and location...",
+      "Identifying room blocks and rates...",
+      "Parsing check-in/check-out dates...",
+      "Detecting theme colors...",
+      "Analyzing attrition policies...",
+      "Finalizing extraction..."
+    ];
+    let msgIndex = 0;
+    setProcessingMessage(messages[0]);
+    const msgInterval = setInterval(() => {
+      msgIndex = (msgIndex + 1) % messages.length;
+      setProcessingMessage(messages[msgIndex]);
+    }, 1200);
+
     try {
       const formData = new FormData();
       if (contractFile) formData.append("contract", contractFile);
@@ -166,6 +310,8 @@ export default function OnboardingPage() {
         method: "POST",
         body: formData,
       });
+      
+      clearInterval(msgInterval);
 
       const data = await res.json();
 
@@ -320,7 +466,7 @@ export default function OnboardingPage() {
             onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
             onDragEnter={(e) => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
-            onDrop={(e) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if (f) { if (f.size > 10 * 1024 * 1024) { alert("File too large. Max 10MB."); return; } const name = f.name.toLowerCase(); const isInvite = name.includes('invite') || name.includes('invitation') || name.includes('card') || name.includes('wedding') || (!f.type.includes('pdf') && f.type.startsWith('image/')); if (isInvite) { setInviteFile(f); } else { setContractFile(f); } } }}
+            onDrop={(e) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if (f) { if (f.size > 10 * 1024 * 1024) { alert("File too large. Max 10MB."); return; } const name = f.name.toLowerCase(); const isInvite = name.includes('invite') || name.includes('invitation') || name.includes('card') || name.includes('wedding') || (!f.type.includes('pdf') && f.type.startsWith('image/')); if (isInvite) { handleInviteFile(f); } else { handleContractFile(f); } } }}
           >
             {/* Contract Upload */}
             <Card className="border-0 shadow-sm overflow-hidden">
@@ -342,13 +488,20 @@ export default function OnboardingPage() {
                     : "border-gray-200 dark:border-zinc-600 hover:border-blue-400 hover:bg-blue-50/30 dark:hover:bg-blue-950/20"
                 }`}>
                   {contractFile ? (
-                    <>
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/50 mb-2">
-                        <Check className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    <div className="flex items-center gap-3">
+                      {contractPreview ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={contractPreview} alt="Contract preview" className="h-20 w-20 object-cover rounded-lg shadow-sm" />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/50">
+                          <Check className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        </div>
+                      )}
+                      <div className="text-left">
+                        <span className="text-sm font-medium text-blue-700 dark:text-blue-400 block truncate max-w-[150px]">{contractFile.name}</span>
+                        <span className="text-xs text-blue-500 dark:text-blue-500 mt-0.5 block">Click to change file</span>
                       </div>
-                      <span className="text-sm font-medium text-blue-700 dark:text-blue-400">{contractFile.name}</span>
-                      <span className="text-xs text-blue-500 dark:text-blue-500 mt-1">Click to change file</span>
-                    </>
+                    </div>
                   ) : (
                     <>
                       <Upload className="h-8 w-8 text-gray-300 dark:text-zinc-600 mb-2" />
@@ -363,7 +516,7 @@ export default function OnboardingPage() {
                     onChange={(e) => {
                       const file = e.target.files?.[0] || null;
                       if (file && file.size > 10 * 1024 * 1024) { alert("File too large. Max 10MB."); return; }
-                      setContractFile(file);
+                      handleContractFile(file);
                     }}
                   />
                 </label>
@@ -390,13 +543,20 @@ export default function OnboardingPage() {
                     : "border-gray-200 dark:border-zinc-600 hover:border-purple-400 hover:bg-purple-50/30 dark:hover:bg-purple-950/20"
                 }`}>
                   {inviteFile ? (
-                    <>
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/50 mb-2">
-                        <Check className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                    <div className="flex items-center gap-3">
+                      {invitePreview ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={invitePreview} alt="Invite preview" className="h-20 w-20 object-cover rounded-lg shadow-sm" />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/50">
+                          <Check className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                        </div>
+                      )}
+                      <div className="text-left">
+                        <span className="text-sm font-medium text-purple-700 dark:text-purple-400 block truncate max-w-[150px]">{inviteFile.name}</span>
+                        <span className="text-xs text-purple-500 dark:text-purple-500 mt-0.5 block">Click to change file</span>
                       </div>
-                      <span className="text-sm font-medium text-purple-700 dark:text-purple-400">{inviteFile.name}</span>
-                      <span className="text-xs text-purple-500 dark:text-purple-500 mt-1">Click to change file</span>
-                    </>
+                    </div>
                   ) : (
                     <>
                       <Upload className="h-8 w-8 text-gray-300 dark:text-zinc-600 mb-2" />
@@ -411,7 +571,7 @@ export default function OnboardingPage() {
                     onChange={(e) => {
                       const file = e.target.files?.[0] || null;
                       if (file && file.size > 10 * 1024 * 1024) { alert("File too large. Max 10MB."); return; }
-                      setInviteFile(file);
+                      handleInviteFile(file);
                     }}
                   />
                 </label>
@@ -462,10 +622,10 @@ export default function OnboardingPage() {
               </div>
             </div>
             <h3 className="text-xl font-semibold text-gray-900 dark:text-zinc-100 mt-6 mb-2">AI is analyzing your documents</h3>
-            <p className="text-sm text-gray-500 dark:text-zinc-400 max-w-sm mx-auto">
-              Extracting room blocks, rates, dates, theme colors, and attrition rules. This usually takes a few seconds.
+            <p className="text-sm text-gray-500 dark:text-zinc-400 max-w-sm mx-auto mb-4">
+              {processingMessage || "Extracting room blocks, rates, dates, theme colors, and attrition rules..."}
             </p>
-            <div className="flex justify-center gap-1 mt-6">
+            <div className="flex justify-center gap-1">
               {[0, 1, 2].map((i) => (
                 <div
                   key={i}
@@ -474,6 +634,9 @@ export default function OnboardingPage() {
                 />
               ))}
             </div>
+            <p className="text-xs text-gray-400 dark:text-zinc-500 mt-4">
+              This usually takes 5-15 seconds depending on document complexity
+            </p>
           </CardContent>
         </Card>
       )}
@@ -509,6 +672,56 @@ export default function OnboardingPage() {
               >
                 <Save className="h-3.5 w-3.5" /> Done Editing
               </Button>
+            </div>
+          )}
+
+          {/* Extraction Confidence Score */}
+          {parsedData.contract?.confidenceScore !== undefined && (
+            <div className={`flex items-center justify-between rounded-xl px-4 py-3 ${
+              parsedData.contract.confidenceScore >= 80 
+                ? 'bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40'
+                : parsedData.contract.confidenceScore >= 50
+                ? 'bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40'
+                : 'bg-red-50 dark:bg-red-950/30 border border-red-200/60 dark:border-red-800/40'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`text-2xl font-bold ${
+                  parsedData.contract.confidenceScore >= 80 
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : parsedData.contract.confidenceScore >= 50
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-red-600 dark:text-red-400'
+                }`}>
+                  {parsedData.contract.confidenceScore}%
+                </div>
+                <div>
+                  <p className={`text-sm font-medium ${
+                    parsedData.contract.confidenceScore >= 80 
+                      ? 'text-emerald-800 dark:text-emerald-300'
+                      : parsedData.contract.confidenceScore >= 50
+                      ? 'text-amber-800 dark:text-amber-300'
+                      : 'text-red-800 dark:text-red-300'
+                  }`}>
+                    Extraction Confidence
+                  </p>
+                  {parsedData.contract.extractionWarnings && parsedData.contract.extractionWarnings.length > 0 && (
+                    <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">
+                      {parsedData.contract.extractionWarnings.slice(0, 2).join(' • ')}
+                      {parsedData.contract.extractionWarnings.length > 2 && ` (+${parsedData.contract.extractionWarnings.length - 2} more)`}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {parsedData.contract.confidenceScore < 80 && !isEditing && (
+                <Button
+                  onClick={() => setIsEditing(true)}
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 shrink-0"
+                >
+                  <Pencil className="h-3 w-3" /> Review & Fix
+                </Button>
+              )}
             </div>
           )}
 
@@ -636,6 +849,42 @@ export default function OnboardingPage() {
                 </div>
                 )}
               </div>
+              
+              {/* Event Description */}
+              <div className="mt-4 space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide">Event Description</label>
+                  {isEditing && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const autoDesc = generateEventDescription(parsedData);
+                        setParsedData((prev) => prev ? { 
+                          ...prev, 
+                          invite: { ...prev.invite, description: autoDesc } 
+                        } : prev);
+                      }}
+                      className="text-xs text-orange-600 hover:text-orange-700 dark:text-orange-400 font-medium flex items-center gap-1"
+                    >
+                      <Sparkles className="h-3 w-3" /> Auto-generate
+                    </button>
+                  )}
+                </div>
+                {isEditing ? (
+                  <textarea
+                    className="w-full text-sm text-gray-900 dark:text-zinc-100 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400 resize-none"
+                    rows={3}
+                    placeholder="Describe your event for guests..."
+                    value={parsedData.invite?.description || ""}
+                    onChange={(e) => updateInvite("description", e.target.value)}
+                  />
+                ) : (
+                  <p className="text-sm text-gray-700 dark:text-zinc-300">
+                    {parsedData.invite?.description || <span className="text-gray-300 italic">No description - click Edit to add one</span>}
+                  </p>
+                )}
+              </div>
+              
               {/* Theme Palette */}
               <div className="mt-5 pt-4 border-t border-gray-100 dark:border-zinc-700">
                 <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide mb-2 block">Theme Palette</label>
@@ -792,7 +1041,7 @@ export default function OnboardingPage() {
             </CardContent>
           </Card>
 
-          {/* Add-Ons Card */}
+          {/* Guest Add-Ons Card */}
           <Card className="border-0 shadow-sm overflow-hidden">
             <CardHeader className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 border-b border-emerald-100 dark:border-emerald-800/40">
               <div className="flex items-center justify-between">
@@ -800,7 +1049,10 @@ export default function OnboardingPage() {
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-sm">
                     <Sparkles className="h-4 w-4" />
                   </div>
-                  <CardTitle className="text-sm font-semibold">Add-Ons & Inclusions</CardTitle>
+                  <div>
+                    <CardTitle className="text-sm font-semibold">Guest Add-Ons</CardTitle>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400">Guests can select & pay</p>
+                  </div>
                 </div>
                 {isEditing && (
                   <Button onClick={addAddOn} variant="outline" size="sm" className="gap-1 h-7 text-xs">
@@ -847,6 +1099,13 @@ export default function OnboardingPage() {
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
+                        <button
+                          onClick={() => moveAddOnToEventService(i)}
+                          className="p-1 text-purple-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/30 rounded-lg transition-colors shrink-0"
+                          title="Move to Event Services"
+                        >
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </button>
                       </>
                     ) : (
                       <>
@@ -865,6 +1124,77 @@ export default function OnboardingPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Event Services Card (Organizer Pays) */}
+          {((parsedData.contract?.eventServices && parsedData.contract.eventServices.length > 0) || isEditing) && (
+            <Card className="border-0 shadow-sm overflow-hidden">
+              <CardHeader className="bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-950/30 dark:to-indigo-950/30 border-b border-purple-100 dark:border-purple-800/40">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-sm">
+                      <Building2 className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-sm font-semibold">Event Services</CardTitle>
+                      <p className="text-xs text-purple-600 dark:text-purple-400">Paid by event organizer</p>
+                    </div>
+                  </div>
+                  {isEditing && (
+                    <Button onClick={addEventService} variant="outline" size="sm" className="gap-1 h-7 text-xs">
+                      <Plus className="h-3 w-3" /> Add Service
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="space-y-2">
+                  {parsedData.contract?.eventServices?.map((service, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-gray-50/70 dark:bg-zinc-800/50 hover:bg-gray-100/70 dark:hover:bg-zinc-700/50 transition-colors gap-2">
+                      {isEditing ? (
+                        <>
+                          <button
+                            onClick={() => moveEventServiceToAddOn(i)}
+                            className="p-1 text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors shrink-0"
+                            title="Move to Guest Add-Ons"
+                          >
+                            <ArrowLeft className="h-3.5 w-3.5" />
+                          </button>
+                          <input
+                            className="flex-1 min-w-0 text-sm font-medium text-gray-700 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-purple-400/50"
+                            value={service.name}
+                            onChange={(e) => updateEventService(i, "name", e.target.value)}
+                            placeholder="Service name"
+                          />
+                          <input
+                            type="number"
+                            className="w-24 text-sm text-right text-gray-900 dark:text-zinc-100 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-purple-400/50"
+                            value={service.price || 0}
+                            onChange={(e) => updateEventService(i, "price", parseInt(e.target.value) || 0)}
+                            placeholder="Price"
+                          />
+                          <button
+                            onClick={() => removeEventService(i)}
+                            className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors shrink-0"
+                            title="Remove service"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sm font-medium text-gray-700 dark:text-zinc-300">{service.name}</span>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-zinc-100">₹{service.price?.toLocaleString()}</span>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                  {(!parsedData.contract?.eventServices || parsedData.contract.eventServices.length === 0) && (
+                    <p className="text-sm text-gray-500 dark:text-zinc-400 text-center py-2">No event services extracted. Click "Add Service" to add.</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Attrition Rules Card */}
           {((parsedData.contract?.attritionRules && parsedData.contract.attritionRules.length > 0) || isEditing) && (

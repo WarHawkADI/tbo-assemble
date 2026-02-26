@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,8 +17,10 @@ interface EventEditFormProps {
     checkIn: string;
     checkOut: string;
     type: string;
+    description: string;
     primaryColor: string;
     secondaryColor: string;
+    accentColor: string;
   };
 }
 
@@ -26,6 +29,7 @@ export function EventEditForm({ eventId, initialData }: EventEditFormProps) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
+  const [mounted, setMounted] = useState(false);
   const [formData, setFormData] = useState({
     name: initialData.name,
     venue: initialData.venue,
@@ -33,9 +37,15 @@ export function EventEditForm({ eventId, initialData }: EventEditFormProps) {
     checkIn: initialData.checkIn.slice(0, 10),
     checkOut: initialData.checkOut.slice(0, 10),
     type: initialData.type,
+    description: initialData.description,
     primaryColor: initialData.primaryColor,
     secondaryColor: initialData.secondaryColor,
+    accentColor: initialData.accentColor,
   });
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -81,8 +91,10 @@ export function EventEditForm({ eventId, initialData }: EventEditFormProps) {
       checkIn: initialData.checkIn.slice(0, 10),
       checkOut: initialData.checkOut.slice(0, 10),
       type: initialData.type,
+      description: initialData.description,
       primaryColor: initialData.primaryColor,
       secondaryColor: initialData.secondaryColor,
+      accentColor: initialData.accentColor,
     });
     setEditing(false);
   };
@@ -101,23 +113,35 @@ export function EventEditForm({ eventId, initialData }: EventEditFormProps) {
     );
   }
 
-  return (
+  // Use portal to render modal at body level for proper positioning
+  if (!mounted) return null;
+
+  const modalContent = (
     <>
-      <Card className="border-0 shadow-lg mb-6 animate-fade-in">
-        <CardHeader className="pb-4 border-b border-gray-100 dark:border-zinc-700">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Pencil className="h-4 w-4 text-blue-500" /> Edit Event Details
-            </CardTitle>
-            <button
-              onClick={handleCancel}
-              className="text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300"
-              title="Cancel"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </CardHeader>
+      {/* Modal Overlay */}
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+        {/* Backdrop */}
+        <div 
+          className="absolute inset-0 bg-black/60"
+          onClick={handleCancel}
+        />
+        
+        {/* Modal Content */}
+        <Card className="relative z-[10000] w-full max-w-2xl max-h-[85vh] overflow-y-auto border border-gray-200 dark:border-zinc-700 shadow-2xl animate-fade-in bg-white dark:bg-zinc-900">
+          <CardHeader className="pb-4 border-b border-gray-100 dark:border-zinc-700 sticky top-0 bg-white dark:bg-zinc-900 z-10">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Pencil className="h-4 w-4 text-blue-500" /> Edit Event Details
+              </CardTitle>
+              <button
+                onClick={handleCancel}
+                className="text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                title="Cancel"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </CardHeader>
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -224,8 +248,42 @@ export function EventEditForm({ eventId, initialData }: EventEditFormProps) {
                 />
               </div>
             </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1.5 block">
+                Accent Color
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  type="color"
+                  value={formData.accentColor}
+                  onChange={(e) => setFormData({ ...formData, accentColor: e.target.value })}
+                  className="w-12 h-10 p-1 cursor-pointer"
+                />
+                <Input
+                  value={formData.accentColor}
+                  onChange={(e) => setFormData({ ...formData, accentColor: e.target.value })}
+                  placeholder="#3b82f6"
+                  className="flex-1"
+                />
+              </div>
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1.5 block">
+                Description
+              </label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Enter a description for the microsite (visible to guests)"
+                rows={3}
+                className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg text-sm text-gray-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
+              <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">
+                This description appears on the guest-facing microsite landing page.
+              </p>
+            </div>
           </div>
-          <div className="flex justify-end gap-3 mt-6">
+          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100 dark:border-zinc-700">
             <Button variant="outline" onClick={handleCancel}>
               Cancel
             </Button>
@@ -236,13 +294,16 @@ export function EventEditForm({ eventId, initialData }: EventEditFormProps) {
           </div>
         </CardContent>
       </Card>
+      </div>
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-4 right-4 z-50 px-4 py-2 bg-green-600 text-white text-sm rounded-lg shadow-lg animate-fade-in">
+        <div className="fixed bottom-4 right-4 z-[10001] px-4 py-2 bg-green-600 text-white text-sm rounded-lg shadow-lg animate-fade-in">
           {toast}
         </div>
       )}
     </>
   );
+
+  return createPortal(modalContent, document.body);
 }

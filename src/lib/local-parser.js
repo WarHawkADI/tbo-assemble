@@ -60,6 +60,7 @@ exports.extractAddOns = extractAddOns;
 exports.extractColorsFromImage = extractColorsFromImage;
 exports.parseContractLocally = parseContractLocally;
 exports.parseInviteLocally = parseInviteLocally;
+exports.parseContractFromText = parseContractFromText;
 // ═══════════════════════════════════════════════════════════════════════════════
 // SHARED CONSTANTS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -99,6 +100,26 @@ function normalizeText(raw) {
         .map((l) => l.trim())
         .join("\n")
         .trim();
+    // ═══ OCR FIXES (must happen BEFORE letter/number splitting!) ═══
+    // Fix common OCR mistakes: O→0, l→1, S→5 in years and numbers
+    text = text.replace(/\b2O(\d{2})\b/g, "20$1"); // 2O26 → 2026
+    text = text.replace(/([,\s])O([0-9]{3}[,\s])/g, "$10$2"); // ,O00 → ,000
+    text = text.replace(/\bO([0-9]{2,})\b/g, "0$1"); // O00 → 000
+    text = text.replace(/\bl([0-9])/g, "1$1"); // l5 → 15
+    text = text.replace(/([0-9])l\b/g, "$11"); // 5l → 51
+    text = text.replace(/([0-9])O\b/g, "$10"); // 3O → 30
+    text = text.replace(/\bS([0-9])/g, "5$1"); // S00 → 500
+    // Fix spaced-out numbers from OCR: "2 5 May" → "25 May", "4,O O O" → "4,000"
+    // Pattern: digit space digit (not across newlines, max 2 spaces between)
+    text = text.replace(/(\d)\s{1,2}(\d)/g, "$1$2");
+    // Fix spaced dates: "1 5 / 0 3 / 2 0 2 6" → "15/03/2026"
+    text = text.replace(/(\d)\s+(\/|\-|\.)\s+(\d)/g, "$1$2$3");
+    // Additional pass: Fix remaining O's in numeric contexts (e.g. "4,OO,OOO" → "4,00,000")
+    // Look for patterns like "digit,OOO" or ",OO," and replace O with 0  text = text.replace(/(\d,)O+/g, (match, prefix) => prefix + '0'.repeat(match.length - prefix.length));
+    text = text.replace(/,O+(?=[,\s\n]|$)/g, (match) => ',' + '0'.repeat(match.length - 1));
+    // Re-add space between day and month name after digit compression: "25May" → "25 May"
+    text = text.replace(/(\d{1,2})(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)/gi, "$1 $2");
+    // ═══ TOKEN SEPARATION (after OCR fixes) ═══
     // Insert spaces between letters and numbers to separate merged tokens
     text = text.replace(/([A-Za-z])(?=\d)/g, "$1 ");
     text = text.replace(/(\d)(?=[A-Za-z])/g, "$1 ");
@@ -644,6 +665,19 @@ function interpretTableRow(numbers) {
  */
 function extractVenue(text, fields) {
     const candidates = [];
+    // Strategy 0: Multi-property contracts - look for "Primary Property:" / "Main Venue:"
+    const multiPropertyMatch = text.match(/(?:primary\s*property|main\s*venue|primary\s*venue)\s*[:–—-]\s*([^\n]{5,80})/i);
+    if (multiPropertyMatch?.[1]) {
+        const primaryVenue = multiPropertyMatch[1].trim().replace(/[,.]$/, "");
+        if (primaryVenue.length >= 5) {
+            // Extract just the venue name (before comma if city follows)
+            const venueOnly = primaryVenue.split(",")[0].trim();
+            // Give primary property highest priority by adding it multiple times (boosts score)
+            candidates.push(venueOnly);
+            candidates.push(venueOnly);
+            candidates.push(venueOnly);
+        }
+    }
     // Strategy 1: Labeled fields (highest confidence)
     const venueFieldKeys = [
         "hotel name", "property name", "venue name", "hotel", "property", "venue",
@@ -655,7 +689,16 @@ function extractVenue(text, fields) {
             candidates.push(fields[key]);
         }
     }
-    // Strategy 1b: Extend labeled-field venue names with next-line hotel suffixes.
+    // Strategy 1b: Banquet hall contracts - "Hotel Name - Ballroom Name" format
+    // Extract hotel name before the dash/hyphen if a facility name follows
+    const banquetPattern = /([A-Z][A-Za-z\s&']+?(?:Hotel|Resort|Palace|Inn|Lodge|Retreat|Spa|Suites|Mansion|Manor|Club|Tower|Centre|Center|Plaza|Residency|Regency))\s*[-–—]\s*(?:Crystal|Grand|Royal|Imperial|Regal|Diamond|Pearl|Golden|Silver|Emerald|Sapphire)\s*(?:Ballroom|Hall|Room)/i;
+    const banquetMatch = text.match(banquetPattern);
+    if (banquetMatch?.[1]) {
+        // Give hotel name from banquet format highest priority
+        candidates.push(banquetMatch[1].trim());
+        candidates.push(banquetMatch[1].trim());
+    }
+    // Strategy 1c: Extend labeled-field venue names with next-line hotel suffixes.
     // Handles multi-line venue names like:
     //   "The Grand Hyatt"    (labeled field value)
     //   "Resort & Spa"       (continuation on next line)
@@ -776,7 +819,72 @@ function extractVenue(text, fields) {
         return { name, score };
     });
     scored.sort((a, b) => b.score - a.score || b.name.length - a.name.length);
-    return scored[0].name.substring(0, 100);
+    // Filter out generic facility names and room types if better venue exists
+    const genericFacilities = /^(?:conference\s+centre|conference\s+center|meeting\s+room|ballroom|banquet\s+hall|executive|deluxe|standard|premium|superior|royal|presidential)(?:\s+(?:suite|room|suites|rooms|hall|centre|center))?$/i;
+    // CRITICAL FIX: Filter out written numbers that might be extracted as venue names
+    // e.g., "Fourteen Lakh Rupees" or "Twenty" from narrative paragraphs
+    const writtenNumberPattern = /^(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|lakh|lac|crore)(?:[\s-]+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|lakh|lac|crore|rupees?))*$/i;
+    // Filter scored candidates to remove:
+    // 1. Written numbers ("Fourteen Lakh Rupees")
+    // 2. Generic facilities (unless it's the only option)
+    // 3. Very short single words that aren't brand names
+    const filteredScored = scored.filter(s => {
+        // Always exclude written numbers
+        if (writtenNumberPattern.test(s.name.trim()))
+            return false;
+        // If there are high-scoring alternatives, filter out generic facilities
+        if (scored.some(alt => alt.score >= 30 && !genericFacilities.test(alt.name))) {
+            return !genericFacilities.test(s.name);
+        }
+        return true;
+    });
+    // Find best non-generic venue (score >= 30)
+    const betterVenue = filteredScored.find(s => s.score >= 30 && !genericFacilities.test(s.name));
+    const selected = betterVenue || filteredScored[0] || scored[0];
+    // Clean the selected venue name to remove common prefixes and garbage suffixes
+    let finalVenue = selected.name
+        .replace(/^(?:For\s+the\s+|For\s+)/i, "") // Remove "For" or "For the" prefix
+        .replace(/^(?:At\s+|In\s+|By\s+)/i, "") // Remove location prepositions
+        .trim();
+    // ENHANCEMENT: Try to append city name if found nearby in text and not already in venue name
+    const knownCities = [
+        "Delhi", "Mumbai", "Bangalore", "Bengaluru", "Chennai", "Kolkata", "Hyderabad",
+        "Pune", "Ahmedabad", "Jaipur", "Goa", "Udaipur", "Agra", "Kochi", "Noida",
+        "Singapore", "Dubai", "London", "Paris", "Tokyo", "Bangkok"
+    ];
+    let cityToAppend = "";
+    // If venue doesn't already contain a city name, try to find one
+    const hasCity = knownCities.some(city => new RegExp(`\\b${city}\\b`, "i").test(finalVenue));
+    if (!hasCity) {
+        // Look for city name near the venue in the text (within 100 chars)
+        const venueIndex = text.toLowerCase().indexOf(finalVenue.toLowerCase());
+        if (venueIndex !== -1) {
+            const nearbyText = text.substring(Math.max(0, venueIndex - 50), Math.min(text.length, venueIndex + finalVenue.length + 100));
+            // Find closest city name
+            for (const city of knownCities) {
+                if (new RegExp(`\\b${city}\\b`, "i").test(nearbyText)) {
+                    cityToAppend = city;
+                    break;
+                }
+            }
+        }
+    }
+    // Remove common garbage suffixes that get appended from PDF parsing
+    const garbageSuffixes = [
+        "Location", "Address", "Check", "Checkout", "Checkin", "Check-in", "Check-out",
+        "Name", "Property", "Venue", "Hotel", "Resort", "Details", "Information",
+        "Contact", "Phone", "Email", "Website", "Fax", "Tel"
+    ];
+    for (const suffix of garbageSuffixes) {
+        // Remove garbage suffixes at the end
+        const suffixPattern = new RegExp(`\\s+${suffix}$`, "i");
+        finalVenue = finalVenue.replace(suffixPattern, "");
+    }
+    // Append city if found and not already present
+    if (cityToAppend && !new RegExp(`\\b${cityToAppend}\\b`, "i").test(finalVenue)) {
+        finalVenue = `${finalVenue} ${cityToAppend}`;
+    }
+    return finalVenue.trim().substring(0, 100);
 }
 /**
  * Extract location / city from text.
@@ -806,6 +914,13 @@ function extractLocation(text, fields) {
         // not contain any known city indicators.
         return /^\d+\s+[A-Za-z]/.test(s) && !s.includes(",") && s.split(" ").length <= 4;
     };
+    /** Returns true if string looks like table data (has multiple numbers/$ symbols on one line) */
+    const isTableData = (s) => {
+        const dollarCount = (s.match(/\$/g) || []).length;
+        const currencyCount = (s.match(/₹/g) || []).length;
+        const numberCount = (s.match(/\d+[,.]\d+/g) || []).length;
+        return (dollarCount + currencyCount + numberCount) >= 3;
+    };
     /**
      * If the string looks like a full street address ("123 Street, City, Country"),
      * extract just the city portion (second-to-last comma segment, trimmed).
@@ -828,11 +943,28 @@ function extractLocation(text, fields) {
         "location", "city", "place", "situated at", "located at",
         "address", // lowest priority – skip if it looks like a personal street address
     ];
+    // CRITICAL FIX: Filter out guest count fields that might be mislabeled as location
+    // e.g., "Location: 400 guests (confirmed: 350 guests)"
+    const isGuestCountField = (s) => {
+        return /\d+\s*(?:guests?|persons?|pax|attendees?|delegates?)/.test(s);
+    };
     for (const key of locationFieldKeys) {
         if (fields[key] && fields[key].length >= 3) {
             const clean = cleanLocation(fields[key]);
+            // CRITICAL FIX: Skip guest count fields mislabeled as location
+            if (isGuestCountField(clean)) {
+                continue;
+            }
             // Skip plain street addresses (e.g. "456 Maple Street") – no city component
             if ((key === "address" || key === "location") && isBareStreetAddress(clean)) {
+                continue;
+            }
+            // Skip if looks like table data (many numbers/currency symbols)
+            if (isTableData(clean)) {
+                continue;
+            }
+            // Skip if location contains room/rate keywords (extracted from table rows)
+            if (/(?:room|suite|night|rate|tariff|\$|₹)/i.test(clean)) {
                 continue;
             }
             // If address is a full street address ("123 Blvd, City, Country"), extract just the city
@@ -850,6 +982,12 @@ function extractLocation(text, fields) {
         const match = text.match(pattern);
         if (match?.[1]) {
             const candidate = cleanLocation(match[1].trim().replace(/[.]$/, ""));
+            // Skip if looks like table data
+            if (isTableData(candidate))
+                continue;
+            // Skip if contains room/rate keywords (from table rows)
+            if (/(?:room|suite|night|rate|tariff|\$|₹)/i.test(candidate))
+                continue;
             // If address is a full street address, extract just the city
             const cityFromAddr2 = extractCityFromAddress(candidate);
             if (cityFromAddr2)
@@ -864,6 +1002,14 @@ function extractLocation(text, fields) {
     if (inAtMatch?.[1] && inAtMatch[1].length > 2) {
         const loc = inAtMatch[1].trim().replace(/[.]$/, "");
         if (!/^(The|This|That|Which|Order|Any|Our|All|Its|Each|Some)$/i.test(loc)) {
+            return loc.substring(0, 80);
+        }
+    }
+    // Strategy 3.5: Check for multi-property primary location
+    const multiPropertyLocMatch = text.match(/(?:primary\s*property|main\s*venue)\s*[:–—-]\s*[^,\n]+,\s*([^,\n]{3,40})/i);
+    if (multiPropertyLocMatch?.[1]) {
+        const loc = multiPropertyLocMatch[1].trim().replace(/[.]$/, "");
+        if (loc.length >= 3 && !/\d|\$|₹/.test(loc)) {
             return loc.substring(0, 80);
         }
     }
@@ -888,9 +1034,13 @@ function extractLocation(text, fields) {
         "Istanbul", "Cairo", "Doha", "Muscat", "Colombo", "Kathmandu",
         "Kuala Lumpur", "Jakarta", "Ho Chi Minh", "Hanoi", "Seoul",
     ];
+    // ENHANCEMENT: Use word boundary matching to avoid partial matches from OCR noise
+    // e.g., avoid matching "Cancellati" when looking for cities, only match complete words
     for (const city of cities) {
-        const idx = text.indexOf(city);
-        if (idx !== -1) {
+        const wordBoundaryPattern = new RegExp(`\\b${city.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+        const match = text.match(wordBoundaryPattern);
+        if (match) {
+            const idx = match.index;
             const after = text.substring(idx, idx + 80);
             const withState = after.match(new RegExp(`(${city.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:,\\s*[A-Za-z\\s]+)?)`));
             if (withState?.[1]) {
@@ -916,11 +1066,13 @@ function extractDates(text, fields) {
     let checkOut = "";
     const checkInFieldKeys = [
         "check-in", "checkin", "check in", "check-in date", "checkin date", "check in date",
-        "arrival", "arrival date", "start date",
+        "arrival", "arrival date", "start date", "from date", "ci", "c/i", "c.i.",
+        "dates (check-in)", "date (check-in)", "event dates", "dates"
     ];
     const checkOutFieldKeys = [
         "check-out", "checkout", "check out", "check-out date", "checkout date", "check out date",
-        "departure", "departure date", "end date",
+        "departure", "departure date", "end date", "to date", "co", "c/o", "c.o.",
+        "dates (check-out)", "date (check-out)"
     ];
     for (const key of checkInFieldKeys) {
         if (fields[key]) {
@@ -962,6 +1114,58 @@ function extractDates(text, fields) {
     }
     if (checkIn && checkOut)
         return [checkIn, checkOut];
+    // ─── Strategy 2.4: "Dates:" field with range ───
+    // "Event Dates: 5-6 June 2026" or "Dates: May 22-24, 2026"
+    const datesFieldMatch = text.match(/(?:event\s+dates?|dates?|conference\s+dates?)\s*[:=]\s*([\d\-\/A-Za-z,\s]+?)(?=\n|Event|$)/i);
+    if (datesFieldMatch && !checkIn && !checkOut) {
+        const datesPart = datesFieldMatch[1].trim();
+        // Try to parse as range first
+        const compactRange = datesPart.match(/(\d{1,2})\s*[-–—]\s*(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{4})/i);
+        if (compactRange) {
+            const month = months[compactRange[3].toLowerCase()];
+            if (month) {
+                checkIn = `${compactRange[4]}-${month}-${compactRange[1].padStart(2, "0")}`;
+                checkOut = `${compactRange[4]}-${month}-${compactRange[2].padStart(2, "0")}`;
+                return [checkIn, checkOut];
+            }
+        }
+    }
+    if (checkIn && checkOut)
+        return [checkIn, checkOut];
+    // ─── Strategy 2.3: Abbreviated formats (CI: / CO:) ───
+    if (!checkIn) {
+        const ciMatch = text.match(/\bCI\s*[:=]\s*([\d\-\/A-Za-z,\s]+?)(?=\||CO\b|$)/i);
+        if (ciMatch) {
+            const parsed = parseDateFromString(ciMatch[1].trim().split(/[;,\|]/)[0].trim(), months);
+            if (parsed)
+                checkIn = parsed;
+        }
+    }
+    if (!checkOut) {
+        const coMatch = text.match(/\bCO\s*[:=]\s*([\d\-\/A-Za-z,\s]+?)(?=\||Nts\b|$)/i);
+        if (coMatch) {
+            const parsed = parseDateFromString(coMatch[1].trim().split(/[;,\|]/)[0].trim(), months);
+            if (parsed)
+                checkOut = parsed;
+        }
+    }
+    if (checkIn && checkOut)
+        return [checkIn, checkOut];
+    // ─── Strategy 2.5: Prose date ranges ───
+    // "from December 20 to December 23, 2026" or "December 20 to 23, 2026"
+    const proseRange = text.match(new RegExp(`(?:from\\s+)?(${monthNames})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+to\\s+(?:(${monthNames})\\s+)?(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})`, "i"));
+    if (proseRange && !checkIn && !checkOut) {
+        const month1 = months[proseRange[1].toLowerCase()];
+        const day1 = proseRange[2].padStart(2, "0");
+        const month2 = proseRange[3] ? months[proseRange[3].toLowerCase()] : month1;
+        const day2 = proseRange[4].padStart(2, "0");
+        const year = proseRange[5];
+        if (month1 && month2) {
+            checkIn = `${year}-${month1}-${day1}`;
+            checkOut = `${year}-${month2}-${day2}`;
+            return [checkIn, checkOut];
+        }
+    }
     // ─── Strategy 3: Collect all dates from text ───
     const parsed = [];
     let m;
@@ -1060,28 +1264,52 @@ function extractDates(text, fields) {
 }
 /**
  * Try to parse a date string in various formats. Returns YYYY-MM-DD or null.
+ * ENHANCED: Handles short years, ordinals, weekdays, and more formats
  */
 function parseDateFromString(str, months) {
     str = str.trim();
+    // Remove common prefixes and weekdays
+    str = str.replace(/^(on|from|through|until|till|the|to)\s+/i, "");
+    str = str.replace(/(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s*/gi, "");
+    str = str.replace(/(st|nd|rd|th)\b/g, ""); // Remove ordinals: 22nd → 22
     // ISO format: 2026-08-14
     const iso = str.match(/(\d{4})-(\d{2})-(\d{2})/);
     if (iso)
         return iso[0];
-    // DD Month YYYY: "14 August 2026"
-    const dmy = str.match(/(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{4})/i);
+    // DD Month YYYY: "14 August 2026" or "14 Aug 2026"
+    const dmy = str.match(/(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{4})/i);
     if (dmy) {
         const month = months[dmy[2].toLowerCase()];
         if (month)
             return `${dmy[3]}-${month}-${dmy[1].padStart(2, "0")}`;
     }
-    // Month DD, YYYY: "August 14, 2026"
-    const mdy = str.match(/(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2}),?\s+(\d{4})/i);
+    // Month DD, YYYY: "August 14, 2026" or "Aug 14, 2026"
+    const mdy = str.match(/(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2}),?\s+(\d{4})/i);
     if (mdy) {
         const month = months[mdy[1].toLowerCase()];
         if (month)
             return `${mdy[3]}-${month}-${mdy[2].padStart(2, "0")}`;
     }
-    // DD/MM/YYYY or DD-MM-YYYY
+    // SHORT YEAR FORMAT: "03-Aug-26" or "14-01-26" (2-digit year)
+    const shortYearAbbrev = str.match(/(\d{1,2})-([A-Za-z]{3})-(\d{2})\b/);
+    if (shortYearAbbrev) {
+        const month = months[shortYearAbbrev[2].toLowerCase()];
+        if (month) {
+            const year = "20" + shortYearAbbrev[3]; // Assume 20xx
+            return `${year}-${month}-${shortYearAbbrev[1].padStart(2, "0")}`;
+        }
+    }
+    // DD/MM/YY or DD-MM-YY (short year numeric)
+    const shortYearNumeric = str.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2})\b/);
+    if (shortYearNumeric) {
+        const a = parseInt(shortYearNumeric[1]);
+        const b = parseInt(shortYearNumeric[2]);
+        const year = "20" + shortYearNumeric[3]; // Assume 20xx
+        if (a <= 31 && b <= 12) {
+            return `${year}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
+        }
+    }
+    // DD/MM/YYYY or DD-MM-YYYY (full year numeric)
     const numeric = str.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
     if (numeric) {
         const a = parseInt(numeric[1]);
@@ -1091,6 +1319,15 @@ function parseDateFromString(str, months) {
         }
         if (b <= 31 && a <= 12) {
             return `${numeric[3]}-${String(a).padStart(2, "0")}-${String(b).padStart(2, "0")}`;
+        }
+    }
+    // MM/DD/YYYY format (US style)
+    const usNumeric = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (usNumeric) {
+        const month = parseInt(usNumeric[1]);
+        const day = parseInt(usNumeric[2]);
+        if (month <= 12 && day <= 31) {
+            return `${usNumeric[3]}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         }
     }
     return null;
@@ -1150,9 +1387,49 @@ function extractValidUntil(text, fields) {
 }
 /** Extract expected / total guest count (takes upper bound of ranges). */
 function extractExpectedGuests(text, fields) {
-    for (const k of ["expected guests", "guest count", "total guests", "number of guests", "no of guests", "no. of guests", "pax", "expected pax", "total pax", "attendees", "delegates"]) {
+    // Helper: parse written numbers for guest counts
+    const parseWrittenGuests = (txt) => {
+        const nums = {
+            "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+            "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+            "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30,
+            "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+            "hundred": 100, "thousand": 1000
+        };
+        const lower = txt.toLowerCase();
+        let total = 0;
+        const words = lower.split(/[\s-]+/);
+        for (const word of words) {
+            if (nums[word])
+                total += nums[word];
+        }
+        // Handle "X hundred": "two hundred fifty" → 250
+        const hundredMatch = lower.match(/([\w-]+)\s*hundred/);
+        if (hundredMatch) {
+            const baseWords = hundredMatch[1].split(/[\s-]+/);
+            let base = 0;
+            baseWords.forEach(w => { if (nums[w])
+                base += nums[w]; });
+            if (base > 0)
+                total = base * 100;
+            // Add any remainder after "hundred"
+            const remainder = lower.split("hundred")[1];
+            if (remainder) {
+                remainder.split(/[\s-]+/).forEach(w => { if (nums[w] && nums[w] < 100)
+                    total += nums[w]; });
+            }
+        }
+        return total > 0 ? total : null;
+    };
+    // PRIORITY 1: Look for "Total" labeled guest counts (prefer over subsets like "Day Delegates")
+    const totalLabels = ["total guests", "total attendees", "total pax", "total delegates", "total participants", "guest count", "expected guests", "total expected", "pax", "no of pax", "no. of pax"];
+    for (const k of totalLabels) {
         if (fields[k]) {
             const fv = fields[k];
+            // Check for written numbers
+            const written = parseWrittenGuests(fv);
+            if (written && written > 0)
+                return written;
             // If the field has a range like "120 – 150", take the max (upper bound)
             const rangeM = fv.match(/(\d+)\s*[–\-to]+\s*(\d+)/);
             if (rangeM) {
@@ -1169,14 +1446,66 @@ function extractExpectedGuests(text, fields) {
             }
         }
     }
+    // ABBREVIATION SUPPORT: Look for "PAX:" or "PAX =" in text
+    const paxPattern = text.match(/\bPAX\s*[:=]\s*(\d+)/i);
+    if (paxPattern) {
+        const n = parseInt(paxPattern[1]);
+        if (n > 0 && n < 100000)
+            return n;
+    }
+    // PRIORITY 2: Look for other guest-related fields (but score lower than "Total")
+    const otherLabels = ["expected pax", "attendees", "delegates", "pax", "participants", "no of guests", "no. of guests", "number of guests"];
+    for (const k of otherLabels) {
+        if (fields[k]) {
+            const fv = fields[k];
+            const written = parseWrittenGuests(fv);
+            if (written && written > 0)
+                return written;
+            const rangeM = fv.match(/(\d+)\s*[–\-to]+\s*(\d+)/);
+            if (rangeM) {
+                const n = parseInt(rangeM[2]);
+                if (n > 0)
+                    return n;
+            }
+            const firstNum = fv.match(/(\d+)/);
+            if (firstNum) {
+                const n = parseInt(firstNum[1]);
+                if (n > 0)
+                    return n;
+            }
+        }
+    }
+    // PRIORITY 3: Extract from raw text with label
+    // "Total Attendees: 180 sales professionals" → 180
+    const totalPattern = text.match(/(?:total\s+(?:attendees?|guests?|pax|delegates?|participants?))\s*[:=]?\s*(\d{2,4})/i);
+    if (totalPattern) {
+        const n = parseInt(totalPattern[1]);
+        if (n > 0 && n < 100000)
+            return n;
+    }
+    // Look for written numbers: "two hundred fifty persons"
+    const writtenPattern = text.match(/((?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand)[\s-]*)+\s*(?:guests?|persons?|pax|attendees?|delegates?)/i);
+    if (writtenPattern) {
+        const parsed = parseWrittenGuests(writtenPattern[0]);
+        if (parsed && parsed > 0)
+            return parsed;
+    }
     // Range "120 – 150 guests" → take max
     const range = text.match(/(\d+)\s*[–\-to–]+\s*(\d+)\s*(?:guests?|pax|person|people|attendee|delegate)/i);
-    if (range)
-        return parseInt(range[2]);
-    // "150 pax" / "150 guests"
+    if (range) {
+        const max = parseInt(range[2]);
+        // Filter out years (2000-2099) that might be incorrectly matched
+        if (max >= 2000 && max < 2100)
+            return 0; // Likely a year, not guest count
+        return max;
+    }
+    // "150 pax" / "150 guests" — but avoid matching years
     const single = text.match(/(\d{2,4})\s*(?:guests?|pax|persons?|people|attendees?|delegates?)/i);
     if (single) {
         const n = parseInt(single[1]);
+        // Filter out years (2000-2099)
+        if (n >= 2000 && n < 2100)
+            return 0; // Likely a year, not guest count
         if (n > 0 && n < 100000)
             return n;
     }
@@ -1216,52 +1545,203 @@ function extractNights(text, fields) {
 }
 /** Extract total contract value. */
 function extractTotalAmount(text, fields) {
+    // Helper: extract FIRST clean number from a string (before any + / % / text noise)
+    const extractFirstNumber = (str) => {
+        // Remove currency symbols
+        str = str.replace(/[₹$€£]/g, "");
+        str = str.replace(/\b(?:Rs\.?|USD|EUR|GBP|INR)\b/gi, "");
+        // Extract FIRST number pattern (with optional decimals and commas)
+        // Stop at +, %, "plus", "and", parentheses
+        const match = str.match(/([\d,]+(?:\.\d{1,2})?)\s*(?:\+|%|\bplus\b|\band\b|\(|$)/i);
+        if (match) {
+            return parseInt(match[1].replace(/,/g, ""));
+        }
+        // Fallback: take all digits but be careful
+        const cleaned = str.replace(/[^0-9]/g, "");
+        return cleaned ? parseInt(cleaned) : 0;
+    };
+    // Helper: parse written Indian numbers ("Twenty-Three Lakh Seventy Thousand" → 2370000)
+    const parseWrittenNumber = (txt) => {
+        const lower = txt.toLowerCase();
+        let total = 0;
+        // Number words mapping (comprehensive)
+        const nums = {
+            "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+            "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
+            "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40,
+            "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90
+        };
+        // Crore (10,000,000)
+        const croreM = lower.match(/([\w-]+)\s*crores?/);
+        if (croreM) {
+            const words = croreM[1].split(/[\s-]+/);
+            let croreNum = 0;
+            words.forEach(w => { if (nums[w])
+                croreNum += nums[w]; });
+            if (croreNum > 0)
+                total += croreNum * 10000000;
+        }
+        // Lakh (100,000) - handle "Twenty-Three Lakh", "Twenty Three Lakh"
+        const lakhM = lower.match(/([\w\s-]+?)\s*(?:lakhs?|lacs?)/);
+        if (lakhM) {
+            const words = lakhM[1].split(/[\s-]+/);
+            let lakhNum = 0;
+            words.forEach(w => { if (nums[w])
+                lakhNum += nums[w]; });
+            if (lakhNum > 0)
+                total += lakhNum * 100000;
+        }
+        // Thousand (1,000)
+        const thousandM = lower.match(/([\w\s-]+?)\s*thousands?/);
+        if (thousandM) {
+            const words = thousandM[1].split(/[\s-]+/);
+            let thousandNum = 0;
+            words.forEach(w => { if (nums[w])
+                thousandNum += nums[w]; });
+            if (thousandNum > 0)
+                total += thousandNum * 1000;
+        }
+        // Hundred (100)
+        const hundredM = lower.match(/([\w\s-]+?)\s*hundreds?/);
+        if (hundredM) {
+            const words = hundredM[1].split(/[\s-]+/);
+            let hundredNum = 0;
+            words.forEach(w => { if (nums[w])
+                hundredNum += nums[w]; });
+            if (hundredNum > 0)
+                total += hundredNum * 100;
+        }
+        // Abbreviated: "15L", "2.5Cr", "500K"
+        const abbrevM = txt.match(/([\d.]+)\s*([LCK])\b/i);
+        if (abbrevM) {
+            const num = parseFloat(abbrevM[1]);
+            const unit = abbrevM[2].toUpperCase();
+            if (unit === "L")
+                total += num * 100000; // Lakh
+            else if (unit === "C")
+                total += num * 10000000; // Crore
+            else if (unit === "K")
+                total += num * 1000; // Thousand
+        }
+        return total > 0 ? total : null;
+    };
     // Highest priority: "X-Night Block Value" / "X-Night Total Value" fields (actual totals, not per-night rates)
     for (const k of Object.keys(fields)) {
         if (/\d+[\s-]*night/.test(k) && /(?:block|total)\s*value|total\s*(?:block|amount)/.test(k)) {
-            const n = parseInt(fields[k].replace(/[^0-9]/g, ""));
+            const written = parseWrittenNumber(fields[k]);
+            if (written && written > 100)
+                return written;
+            const n = extractFirstNumber(fields[k]);
             if (n > 0)
                 return n;
         }
     }
     // Also search text for "X-Night Block Value: amount" pattern
-    const mMultiNight = text.match(/\d+[\s-]*night\s*(?:block\s*)?(?:value|total|amount)\s*[:=]?\s*[₹$€£]?\s*([\d,]+)/i);
+    const mMultiNight = text.match(/\d+[\s-]*night\s*(?:block\s*)?(?:value|total|amount)\s*[:=]?\s*[₹$€£Rs\.?]?\s*([\d,]+)/i);
     if (mMultiNight)
         return parseInt(mMultiNight[1].replace(/,/g, ""));
-    // Standard labeled fields — skip per-night annotated values
-    for (const k of ["total amount", "total", "grand total", "total block value", "total value", "total cost", "total price", "net total", "invoice total"]) {
+    // Standard labeled fields — PRIORITIZE "GRAND TOTAL" for aggregated amounts
+    // Search in order of priority: grand total > final total > total amount > other totals
+    const priorityLabels = [
+        "grand total", "final total", "final billing", "final payment", "total contract value",
+        "total amount", "net total", "invoice total", "total block value", "total value", "total cost", "total price", "total"
+    ];
+    for (const k of priorityLabels) {
         if (fields[k]) {
             if (/per\s*night/i.test(fields[k]))
                 continue; // skip per-night rate fields
-            const n = parseInt(fields[k].replace(/[^0-9]/g, ""));
+            // Try to parse written number first (Lakh/Crore notation)
+            const written = parseWrittenNumber(fields[k]);
+            if (written && written > 100)
+                return written;
+            // Parse numeric value
+            const n = extractFirstNumber(fields[k]);
             if (n > 0)
                 return n;
         }
     }
+    // SPECIAL: Look for "GRAND TOTAL" in raw text with Lakh/Crore notation
+    // "GRAND TOTAL: Rs. 1.44 Crore" or "Grand Total: Fourteen Lakh Thirty-Five Thousand"
+    const grandTotalPattern = /(?:grand\s*total|final\s*total|total\s*contract\s*value|\bTTL\b)\s*[:=]?\s*(?:[₹$€£]|Rs\.?|USD|INR)?\s*([\d,.]+\s*(?:crore|lakh|lac|thousand)?|(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]*)+(?:crore|lakh|lac|thousand)(?:[\s,]+(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]*)+(?:crore|lakh|lac|thousand))*)/i;
+    const grandMatch = text.match(grandTotalPattern);
+    if (grandMatch) {
+        const written = parseWrittenNumber(grandMatch[1]);
+        if (written && written > 100)
+            return written;
+        // Handle numeric with Lakh/Crore: "1.44 Crore"
+        const numericLakh = grandMatch[1].match(/([\d,.]+)\s*(?:lakhs?|lacs?)/i);
+        if (numericLakh) {
+            const num = parseFloat(numericLakh[1].replace(/,/g, ""));
+            return Math.round(num * 100000);
+        }
+        const numericCrore = grandMatch[1].match(/([\d,.]+)\s*crores?/i);
+        if (numericCrore) {
+            const num = parseFloat(numericCrore[1].replace(/,/g, ""));
+            return Math.round(num * 10000000);
+        }
+        const n = extractFirstNumber(grandMatch[1]);
+        if (n > 0)
+            return n;
+    }
+    // Collect ALL total matches and return the LARGEST one (aggregated totals are usually bigger)
+    const allTotals = [];
     // Fallback: regex on text (skip per-night inline values)
-    const mAll = [...text.matchAll(/(?:total\s*(?:block\s*)?(?:amount|value|price|cost|invoice|charges?))\s*[:=]?\s*[₹$€£]?\s*([\d,]+)/gi)];
+    // Support both ₹/$/€/£ and Rs./USD/INR notation
+    const mAll = [...text.matchAll(/(?:total\s*(?:block\s*)?(?:amount|value|price|cost|invoice|charges?|contract\s*value))\s*[:=]?\s*(?:[₹$€£]|Rs\.?|USD|INR)?\s*([\d,]+)/gi)];
     for (const m of mAll) {
         // Check 30 chars after match for "per night" qualifier
         const after = text.substring(m.index + m[0].length, m.index + m[0].length + 30);
         if (/per\s*night/i.test(after))
             continue;
-        return parseInt(m[1].replace(/,/g, ""));
+        allTotals.push(parseInt(m[1].replace(/,/g, "")));
     }
-    const m2 = text.match(/[₹$€£]\s*([\d,]+)\s*(?:total|grand\s*total)/i);
-    if (m2)
-        return parseInt(m2[1].replace(/,/g, ""));
+    const m2All = [...text.matchAll(/(?:[₹$€£]|Rs\.?)\s*([\d,]+)\s*(?:total|grand\s*total)/gi)];
+    for (const m of m2All) {
+        allTotals.push(parseInt(m[1].replace(/,/g, "")));
+    }
+    // Also capture section totals for aggregation: "Total Room Revenue: $82,800"
+    const sectionTotals = [...text.matchAll(/(?:total\s+(?:room|meeting|f&b|f\/b|catering|service|revenue|charges?|accommodation))\s*[:=]?\s*(?:[₹$€£]|Rs\.?|USD)?\s*([\d,]+)/gi)];
+    for (const m of sectionTotals) {
+        allTotals.push(parseInt(m[1].replace(/,/g, "")));
+    }
+    // Return the largest total found (likely the grand total)
+    if (allTotals.length > 0) {
+        return Math.max(...allTotals);
+    }
+    // Last resort: scan entire text for largest written number (for paragraph-style contracts)
+    // Look for patterns like "Twenty-Three Lakh Seventy Thousand"
+    const writtenPattern = /((?:(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]*)+(?:crores?|lakhs?|lacs?|thousands?|hundreds?)(?:[\s,]+(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]*)+(?:crores?|lakhs?|lacs?|thousands?|hundreds?))*)/gi;
+    let match;
+    while ((match = writtenPattern.exec(text)) !== null) {
+        const parsed = parseWrittenNumber(match[0]);
+        if (parsed && parsed > 1000)
+            allTotals.push(parsed);
+    }
+    if (allTotals.length > 0) {
+        return Math.max(...allTotals);
+    }
     return 0;
 }
 /** Detect currency from text symbols / keywords. */
 function extractCurrency(text) {
-    if (/₹|inr|indian rupee|rs\./i.test(text))
+    // ABBREVIATION SUPPORT: Look for currency in abbreviated format
+    // "Currency: INR" or "CCY: USD"
+    const abbrevCurrency = text.match(/(?:currency|ccy)\s*[:=]\s*(INR|USD|EUR|GBP)/i);
+    if (abbrevCurrency)
+        return abbrevCurrency[1].toUpperCase();
+    // Check for Indian Rupee: ₹, INR, Rs., Rs, Rupee
+    if (/₹|\bINR\b|\bRs\.?\s|indian\s+rupee/i.test(text))
         return "INR";
-    if (/\$|usd|us dollar/i.test(text))
+    if (/\$|\bUSD\b|us\s+dollar/i.test(text))
         return "USD";
-    if (/€|eur\b|euro/i.test(text))
+    if (/€|\bEUR\b|euro/i.test(text))
         return "EUR";
-    if (/£|gbp|pound/i.test(text))
+    if (/£|\bGBP\b|pound/i.test(text))
         return "GBP";
+    // Fallback: If text contains Indian location/hotel names, assume INR
+    if (/\b(?:Delhi|Mumbai|Bangalore|Chennai|Kolkata|Hyderabad|Pune|Jaipur|Goa|India)\b/i.test(text)) {
+        return "INR";
+    }
     return "";
 }
 /** Extract tax / GST information string. */
@@ -2357,4 +2837,105 @@ async function parseInviteLocally(buffer, mimeType) {
             data.agentContact = iAgent;
     }
     return { success: true, data };
+}
+/**
+ * Parse contract from plain text string (for testing purposes).
+ * This bypasses PDF/image extraction and directly parses the text.
+ */
+async function parseContractFromText(text) {
+    // Normalize text first (OCR fixes, spacing, etc.)
+    const normalizedText = normalizeText(text);
+    // Validate content
+    const validation = validateContractText(normalizedText);
+    if (!validation.isValid) {
+        return {
+            success: false,
+            error: validation.error,
+            validation,
+        };
+    }
+    // Extract labeled fields
+    const fields = extractLabeledFields(normalizedText);
+    // Parse table data
+    const tableRows = parseTableRows(normalizedText);
+    // ── Core fields ────────────────────────────────────────────────────────────
+    const venue = extractVenue(normalizedText, fields);
+    const location = extractLocation(normalizedText, fields);
+    const [checkIn, checkOut] = extractDates(normalizedText, fields);
+    const eventType = detectEventType(normalizedText);
+    const eventName = extractEventName(normalizedText, eventType, fields);
+    const clientName = extractClientName(normalizedText, fields);
+    // ── Structured arrays ──────────────────────────────────────────────────────
+    const rooms = extractRooms(normalizedText, tableRows);
+    const addOns = extractAddOns(normalizedText, tableRows);
+    const attritionRules = extractAttritionRules(normalizedText);
+    // ── Extended metadata ──────────────────────────────────────────────────────
+    const contractNo = extractContractNo(normalizedText, fields);
+    const issueDate = extractIssueDate(normalizedText, fields);
+    const validUntil = extractValidUntil(normalizedText, fields);
+    const groupCode = extractGroupCode(normalizedText, fields);
+    const gstin = extractGSTIN(normalizedText, fields);
+    const expectedGuests = extractExpectedGuests(normalizedText, fields);
+    const nights = extractNights(normalizedText, fields);
+    // If no explicit nights found, calculate from check-in/check-out dates
+    const resolvedNights = nights ||
+        (() => {
+            if (checkIn && checkOut) {
+                const d1 = new Date(checkIn), d2 = new Date(checkOut);
+                if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) {
+                    const diff = Math.round((d2.getTime() - d1.getTime()) / 86400000);
+                    if (diff > 0 && diff < 90)
+                        return diff;
+                }
+            }
+            return 0;
+        })();
+    // ── Financial ──────────────────────────────────────────────────────────────
+    const totalAmount = extractTotalAmount(normalizedText, fields);
+    const currency = extractCurrency(normalizedText);
+    const taxInfo = extractTaxInfo(normalizedText);
+    const paymentTerms = extractPaymentTerms(normalizedText, fields);
+    const earlyCheckIn = extractEarlyCheckIn(normalizedText);
+    const lateCheckOut = extractLateCheckOut(normalizedText);
+    const hotelContact = extractHotelContact(normalizedText, fields);
+    const agentContact = extractAgentContact(normalizedText, fields);
+    const signatories = extractSignatories(normalizedText);
+    const data = {
+        // Core
+        venue: venue || "Unknown Venue",
+        location: location || "Unknown Location",
+        checkIn: checkIn || "",
+        checkOut: checkOut || "",
+        eventName: eventName || "",
+        eventType: eventType || "event",
+        clientName: clientName || "",
+        // Contract metadata
+        contractNo: contractNo || undefined,
+        issueDate: issueDate || undefined,
+        validUntil: validUntil || undefined,
+        groupCode: groupCode || undefined,
+        gstin: gstin || undefined,
+        // Headcount / duration
+        expectedGuests: expectedGuests || undefined,
+        nights: resolvedNights || undefined,
+        // Financial
+        totalAmount: totalAmount || undefined,
+        currency: currency || undefined,
+        taxInfo: taxInfo || undefined,
+        paymentTerms: paymentTerms || undefined,
+        // Contacts
+        hotelContact: hotelContact || undefined,
+        agentContact: agentContact || undefined,
+        signatories: signatories.length > 0 ? signatories : undefined,
+        // Policies
+        earlyCheckIn: earlyCheckIn || undefined,
+        lateCheckOut: lateCheckOut || undefined,
+        // Structured arrays
+        rooms: rooms.length > 0
+            ? rooms
+            : [{ roomType: "Standard Room", rate: 0, quantity: 1 }],
+        addOns,
+        attritionRules,
+    };
+    return { success: true, data, validation };
 }
