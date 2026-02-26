@@ -67,6 +67,21 @@ export function CheckinClient({ eventId, eventName }: CheckinClientProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
+  // Listen for cross-tab booking notifications
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    
+    const channel = new BroadcastChannel('tbo-bookings');
+    channel.onmessage = (event) => {
+      if (event.data?.type === 'new-booking') {
+        fetchBookings();
+      }
+    };
+    
+    return () => channel.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId]);
+
   const handleCheckin = async () => {
     if (!bookingId.trim()) return;
     setLoading(true);

@@ -1,8 +1,9 @@
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const CACHE_NAME = `tbo-assemble-${CACHE_VERSION}`;
 const MAX_CACHE_ENTRIES = 100;
 const STATIC_ASSETS = [
   "/",
+  "/dashboard",
   "/logo.svg",
   "/manifest.json",
   "/favicon.ico",
@@ -78,3 +79,93 @@ self.addEventListener("fetch", (event) => {
       })
   );
 });
+
+// Push notifications (demo)
+self.addEventListener("push", (event) => {
+  const defaultData = {
+    title: "TBO Assemble",
+    body: "You have a new notification",
+    icon: "/logo.svg",
+    badge: "/logo.svg",
+    tag: "tbo-notification",
+  };
+
+  let data = defaultData;
+  try {
+    data = event.data ? { ...defaultData, ...event.data.json() } : defaultData;
+  } catch (e) {
+    // Use default data if parsing fails
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: data.icon,
+      badge: data.badge,
+      tag: data.tag,
+      renotify: true,
+      vibrate: [100, 50, 100],
+      data: data.data || {},
+      actions: data.actions || [
+        { action: "view", title: "View" },
+        { action: "dismiss", title: "Dismiss" },
+      ],
+    })
+  );
+});
+
+// Notification click handler
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const urlToOpen = event.notification.data?.url || "/dashboard";
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      // Focus existing window if available
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && "focus" in client) {
+          client.navigate(urlToOpen);
+          return client.focus();
+        }
+      }
+      // Open new window if none exists
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
+  );
+});
+
+// Background sync for offline form submissions (demo)
+self.addEventListener("sync", (event) => {
+  if (event.tag === "sync-bookings") {
+    event.waitUntil(syncPendingBookings());
+  }
+});
+
+async function syncPendingBookings() {
+  // This would sync any pending offline bookings when connection is restored
+  console.log("[SW] Syncing pending bookings...");
+  // In production, this would read from IndexedDB and POST to server
+}
+
+// Periodic background sync (if supported)
+self.addEventListener("periodicsync", (event) => {
+  if (event.tag === "update-events") {
+    event.waitUntil(updateEventsCache());
+  }
+});
+
+async function updateEventsCache() {
+  // Refresh events data in background
+  try {
+    const response = await fetch("/api/events");
+    if (response.ok) {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put("/api/events", response);
+    }
+  } catch (e) {
+    // Silently fail if offline
+  }
+}

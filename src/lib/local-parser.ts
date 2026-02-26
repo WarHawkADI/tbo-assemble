@@ -27,7 +27,44 @@ const MONTHS: Record<string, string> = {
   may: "05", june: "06", july: "07", august: "08",
   september: "09", october: "10", november: "11", december: "12",
   jan: "01", feb: "02", mar: "03", apr: "04",
-  jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+  jun: "06", jul: "07", aug: "08", sep: "09", sept: "09", oct: "10", nov: "11", dec: "12",
+};
+
+// Ordinal suffixes for dates
+const ORDINALS: string[] = ["st", "nd", "rd", "th"];
+
+// Date sanity check: event dates should be within reasonable range
+const validateDateRange = (dateStr: string): boolean => {
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return false;
+    
+    const now = new Date();
+    const oneYearAgo = new Date(now);
+    oneYearAgo.setFullYear(now.getFullYear() - 1);
+    
+    const tenYearsFromNow = new Date(now);
+    tenYearsFromNow.setFullYear(now.getFullYear() + 10);
+    
+    // Event date should not be more than 1 year in past or 10 years in future
+    return date >= oneYearAgo && date <= tenYearsFromNow;
+  } catch {
+    return false;
+  }
+};
+
+// Smart year inference for ambiguous dates (e.g., "March 15" without year)
+const inferYear = (month: number, day: number): number => {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  
+  // If the month/day has already passed this year, assume next year
+  const testDate = new Date(currentYear, month - 1, day);
+  if (testDate < now) {
+    return currentYear + 1;
+  }
+  return currentYear;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -72,12 +109,25 @@ function normalizeText(raw: string): string {
   
   // Fix common OCR mistakes: O→0, l→1, S→5 in years and numbers
   text = text.replace(/\b2O(\d{2})\b/g, "20$1");  // 2O26 → 2026
+  text = text.replace(/\b20[lI](\d)\b/g, "201$1");  // 20l6 → 2016
   text = text.replace(/([,\s])O([0-9]{3}[,\s])/g, "$10$2");  // ,O00 → ,000
   text = text.replace(/\bO([0-9]{2,})\b/g, "0$1");  // O00 → 000
   text = text.replace(/\bl([0-9])/g, "1$1");  // l5 → 15
   text = text.replace(/([0-9])l\b/g, "$11");  // 5l → 51
   text = text.replace(/([0-9])O\b/g, "$10");  // 3O → 30
   text = text.replace(/\bS([0-9])/g, "5$1");  // S00 → 500
+  text = text.replace(/\bI([0-9]{2,})\b/g, "1$1");  // I50 → 150
+  text = text.replace(/([0-9])I\b/g, "$11");  // 5I → 51
+  text = text.replace(/\b(\d+)OO\b/g, "$100");  // 50OO → 5000
+  
+  // Fix "pax" OCR corruptions: "2OO pax" → "200 pax"
+  text = text.replace(/(\d+)O+\s*(pax|guests?|persons?|people)/gi, (_, nums, unit) => {
+    return nums.replace(/O/g, '0') + ' ' + unit;
+  });
+  
+  // Fix common OCR for Rs symbol: "R s" "R.s" "R s." → "Rs."
+  text = text.replace(/R\s+s\.?/gi, "Rs.");
+  text = text.replace(/R\.s\.?/gi, "Rs.");
   
   // Fix spaced-out numbers from OCR: "2 5 May" → "25 May", "4,O O O" → "4,000"
   // Pattern: digit space digit (not across newlines, max 2 spaces between)
@@ -1548,7 +1598,7 @@ function extractDates(
 
 /**
  * Try to parse a date string in various formats. Returns YYYY-MM-DD or null.
- * ENHANCED: Handles short years, ordinals, weekdays, and more formats
+ * ENHANCED: Handles short years, ordinals, weekdays, relative dates, and more formats
  */
 function parseDateFromString(
   str: string,
@@ -1563,7 +1613,10 @@ function parseDateFromString(
 
   // ISO format: 2026-08-14
   const iso = str.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return iso[0];
+  if (iso) {
+    const result = iso[0];
+    return validateDateRange(result) ? result : null;
+  }
 
   // DD Month YYYY: "14 August 2026" or "14 Aug 2026"
   const dmy = str.match(
@@ -1571,7 +1624,10 @@ function parseDateFromString(
   );
   if (dmy) {
     const month = months[dmy[2].toLowerCase()];
-    if (month) return `${dmy[3]}-${month}-${dmy[1].padStart(2, "0")}`;
+    if (month) {
+      const result = `${dmy[3]}-${month}-${dmy[1].padStart(2, "0")}`;
+      return validateDateRange(result) ? result : null;
+    }
   }
 
   // Month DD, YYYY: "August 14, 2026" or "Aug 14, 2026"
@@ -1580,7 +1636,40 @@ function parseDateFromString(
   );
   if (mdy) {
     const month = months[mdy[1].toLowerCase()];
-    if (month) return `${mdy[3]}-${month}-${mdy[2].padStart(2, "0")}`;
+    if (month) {
+      const result = `${mdy[3]}-${month}-${mdy[2].padStart(2, "0")}`;
+      return validateDateRange(result) ? result : null;
+    }
+  }
+
+  // DD Month (without year) - infer year: "15 March", "March 15"
+  const dmNoYear = str.match(
+    /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)(?:\s*$|[^\d])/i
+  );
+  if (dmNoYear) {
+    const monthStr = months[dmNoYear[2].toLowerCase()];
+    if (monthStr) {
+      const day = parseInt(dmNoYear[1]);
+      const monthNum = parseInt(monthStr);
+      const year = inferYear(monthNum, day);
+      const result = `${year}-${monthStr}-${String(day).padStart(2, "0")}`;
+      return validateDateRange(result) ? result : null;
+    }
+  }
+
+  // Month DD (without year): "March 15", "Aug 20"
+  const mdNoYear = str.match(
+    /(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2})(?:\s*$|[^\d])/i
+  );
+  if (mdNoYear) {
+    const monthStr = months[mdNoYear[1].toLowerCase()];
+    if (monthStr) {
+      const day = parseInt(mdNoYear[2]);
+      const monthNum = parseInt(monthStr);
+      const year = inferYear(monthNum, day);
+      const result = `${year}-${monthStr}-${String(day).padStart(2, "0")}`;
+      return validateDateRange(result) ? result : null;
+    }
   }
 
   // SHORT YEAR FORMAT: "03-Aug-26" or "14-01-26" (2-digit year)
@@ -1588,8 +1677,11 @@ function parseDateFromString(
   if (shortYearAbbrev) {
     const month = months[shortYearAbbrev[2].toLowerCase()];
     if (month) {
-      const year = "20" + shortYearAbbrev[3]; // Assume 20xx
-      return `${year}-${month}-${shortYearAbbrev[1].padStart(2, "0")}`;
+      // Smart year inference: 00-50 → 2000-2050, 51-99 → 1951-1999
+      const shortYear = parseInt(shortYearAbbrev[3]);
+      const year = shortYear <= 50 ? "20" + shortYearAbbrev[3] : "19" + shortYearAbbrev[3];
+      const result = `${year}-${month}-${shortYearAbbrev[1].padStart(2, "0")}`;
+      return validateDateRange(result) ? result : null;
     }
   }
 
@@ -1598,9 +1690,11 @@ function parseDateFromString(
   if (shortYearNumeric) {
     const a = parseInt(shortYearNumeric[1]);
     const b = parseInt(shortYearNumeric[2]);
-    const year = "20" + shortYearNumeric[3]; // Assume 20xx
+    const shortYear = parseInt(shortYearNumeric[3]);
+    const year = shortYear <= 50 ? "20" + shortYearNumeric[3] : "19" + shortYearNumeric[3];
     if (a <= 31 && b <= 12) {
-      return `${year}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
+      const result = `${year}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
+      return validateDateRange(result) ? result : null;
     }
   }
 
@@ -1610,10 +1704,12 @@ function parseDateFromString(
     const a = parseInt(numeric[1]);
     const b = parseInt(numeric[2]);
     if (a <= 31 && b <= 12) {
-      return `${numeric[3]}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
+      const result = `${numeric[3]}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
+      return validateDateRange(result) ? result : null;
     }
     if (b <= 31 && a <= 12) {
-      return `${numeric[3]}-${String(a).padStart(2, "0")}-${String(b).padStart(2, "0")}`;
+      const result = `${numeric[3]}-${String(a).padStart(2, "0")}-${String(b).padStart(2, "0")}`;
+      return validateDateRange(result) ? result : null;
     }
   }
 
@@ -1623,7 +1719,8 @@ function parseDateFromString(
     const month = parseInt(usNumeric[1]);
     const day = parseInt(usNumeric[2]);
     if (month <= 12 && day <= 31) {
-      return `${usNumeric[3]}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const result = `${usNumeric[3]}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      return validateDateRange(result) ? result : null;
     }
   }
 

@@ -67,6 +67,7 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
   const [demoStep, setDemoStep] = useState(0);
   const [demoNotifications, setDemoNotifications] = useState<{ id: number; text: string; type: string }[]>([]);
   const [visibleCount, setVisibleCount] = useState(6);
+  
   // Set initial timestamp after mount to avoid hydration mismatch
   useEffect(() => {
     setLastRefresh(new Date());
@@ -105,6 +106,21 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
       setRefreshing(false);
     }
   }, []);
+
+  // Listen for cross-tab booking notifications (from microsite)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    
+    const channel = new BroadcastChannel('tbo-bookings');
+    channel.onmessage = (event) => {
+      if (event.data?.type === 'new-booking') {
+        // Auto-refresh dashboard when a booking is made in another tab
+        refreshData();
+      }
+    };
+    
+    return () => channel.close();
+  }, [refreshData]);
 
   // Reset demo data
   const resetDemo = useCallback(async () => {
@@ -286,7 +302,7 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
       </div>
 
       {/* Stats with Animated Counters */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8" data-tour="stats-overview">
         <Card className="border-0 shadow-sm overflow-hidden relative group hover:shadow-md transition-shadow">
           <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-[#ff6b35]/10 to-transparent rounded-bl-full" />
           <CardContent className="p-5">
@@ -532,7 +548,7 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
         </Card>
       ) : (
         <>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" data-tour="events-list">
           {events.slice(0, visibleCount).map((event) => {
             const occupancy = event.totalRooms > 0
               ? Math.round((event.bookedRooms / event.totalRooms) * 100)

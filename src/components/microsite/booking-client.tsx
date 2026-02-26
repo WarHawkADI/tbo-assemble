@@ -1,10 +1,101 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Check, ArrowLeft, ArrowRight, Loader2, User, Hotel, Sparkles, CreditCard, PartyPopper, Shield, Clock, QrCode, FileText, ExternalLink, BadgePercent } from "lucide-react";
+import Link from "next/link";
+import { Check, ArrowLeft, ArrowRight, Loader2, User, Hotel, Sparkles, CreditCard, PartyPopper, Shield, Clock, QrCode, FileText, ExternalLink, BadgePercent, Bed, Wallet, WifiOff, RefreshCw, AlertTriangle } from "lucide-react";
 import { ConfettiExplosion, useConfetti } from "@/components/ui/confetti";
 import { QRCode as LocalQRCode } from "@/components/ui/qr-code";
+import { PaymentModal } from "@/components/ui/payment-modal";
+
+// Offline detection hook
+function useOnlineStatus() {
+  const [isOnline, setIsOnline] = useState(true);
+  useEffect(() => {
+    // Check initial status
+    setIsOnline(navigator.onLine);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+  return isOnline;
+}
+
+// Auto-save form data to localStorage
+function useFormPersistence(eventId: string, formData: Record<string, unknown>, setFormData: (data: Record<string, unknown>) => void) {
+  const storageKey = `booking-form-${eventId}`;
+  
+  // Load saved data on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Only restore if it's recent (within 24 hours)
+        if (parsed.timestamp && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+          setFormData(parsed.data);
+        } else {
+          localStorage.removeItem(storageKey);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to restore form data:', e);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId]);
+  
+  // Save data on changes
+  useEffect(() => {
+    try {
+      if (Object.values(formData).some(v => v)) {
+        localStorage.setItem(storageKey, JSON.stringify({
+          data: formData,
+          timestamp: Date.now()
+        }));
+      }
+    } catch (e) {
+      console.warn('Failed to save form data:', e);
+    }
+  }, [storageKey, formData]);
+  
+  // Clear saved data
+  const clearSavedData = useCallback(() => {
+    localStorage.removeItem(storageKey);
+  }, [storageKey]);
+  
+  return { clearSavedData };
+}
+
+// Room image placeholders based on room type (uses picsum for demo with seeded IDs)
+const getRoomImage = (roomType: string): { url: string; alt: string } => {
+  const type = roomType.toLowerCase();
+  // Map room types to specific picsum image IDs for consistent appearance
+  if (type.includes('presidential') || type.includes('penthouse')) {
+    return { url: 'https://picsum.photos/seed/presidential/300/200', alt: 'Luxurious presidential suite' };
+  }
+  if (type.includes('suite') || type.includes('royal')) {
+    return { url: 'https://picsum.photos/seed/suite/300/200', alt: 'Elegant suite room' };
+  }
+  if (type.includes('deluxe') || type.includes('premium')) {
+    return { url: 'https://picsum.photos/seed/deluxe/300/200', alt: 'Deluxe room interior' };
+  }
+  if (type.includes('executive') || type.includes('business')) {
+    return { url: 'https://picsum.photos/seed/executive/300/200', alt: 'Executive room' };
+  }
+  if (type.includes('villa') || type.includes('cottage')) {
+    return { url: 'https://picsum.photos/seed/villa/300/200', alt: 'Private villa' };
+  }
+  if (type.includes('pool') || type.includes('garden')) {
+    return { url: 'https://picsum.photos/seed/poolview/300/200', alt: 'Pool view room' };
+  }
+  // Default for standard/superior rooms
+  return { url: 'https://picsum.photos/seed/hotelroom/300/200', alt: 'Hotel room' };
+};
 
 interface RoomBlock {
   id: string;
@@ -62,6 +153,36 @@ export default function BookingClient({ event }: { event: EventData }) {
     (new Date(event.checkOut).getTime() - new Date(event.checkIn).getTime()) / (1000 * 60 * 60 * 24)
   );
 
+  // Online status detection
+  const isOnline = useOnlineStatus();
+
+  // Form persistence
+  const formData = {
+    guestName,
+    guestEmail,
+    guestPhone,
+    guestGroup,
+    proximityRequest,
+    specialRequests,
+    selectedRoom,
+    selectedAddOns: selectedAddOns.join(','),
+    agreedToTerms
+  };
+  
+  const setFormDataFromStorage = useCallback((data: Record<string, unknown>) => {
+    if (data.guestName) setGuestName(data.guestName as string);
+    if (data.guestEmail) setGuestEmail(data.guestEmail as string);
+    if (data.guestPhone) setGuestPhone(data.guestPhone as string);
+    if (data.guestGroup) setGuestGroup(data.guestGroup as string);
+    if (data.proximityRequest) setProximityRequest(data.proximityRequest as string);
+    if (data.specialRequests) setSpecialRequests(data.specialRequests as string);
+    if (data.selectedRoom) setSelectedRoom(data.selectedRoom as string);
+    if (data.selectedAddOns) setSelectedAddOns((data.selectedAddOns as string).split(',').filter(Boolean));
+    if (data.agreedToTerms !== undefined) setAgreedToTerms(data.agreedToTerms as boolean);
+  }, []);
+  
+  const { clearSavedData } = useFormPersistence(event.id, formData, setFormDataFromStorage);
+
   const selectedRoomData = event.roomBlocks.find((r) => r.id === selectedRoom);
   const roomTotal = selectedRoomData ? selectedRoomData.rate * nights : 0;
 
@@ -85,6 +206,8 @@ export default function BookingClient({ event }: { event: EventData }) {
   const confetti = useConfetti();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [qrLoaded, setQrLoaded] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentTransactionId, setPaymentTransactionId] = useState("");
 
   // Dynamic group options based on event type
   const groupOptions = (() => {
@@ -100,7 +223,39 @@ export default function BookingClient({ event }: { event: EventData }) {
     }
   })();
 
-  const handleSubmit = async () => {
+  // Open payment modal after validation
+  const initiatePayment = () => {
+    // Check online status first
+    if (!navigator.onLine) {
+      setBookingError("You're offline. Please connect to the internet to complete your booking.");
+      return;
+    }
+    
+    // Inline validation first
+    const errors: Record<string, string> = {};
+    if (!guestName.trim()) errors.name = "Name is required";
+    if (guestEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)) errors.email = "Invalid email format";
+    const phoneClean = guestPhone.replace(/[\s\-().]/g, '');
+    if (guestPhone && !/^(\+?\d{1,4})?[6-9]?\d{9,14}$/.test(phoneClean)) {
+      errors.phone = "Enter valid phone number";
+    }
+    if (!selectedRoom) errors.room = "Please select a room";
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+    if (!agreedToTerms) return;
+    
+    // Open payment modal
+    setShowPaymentModal(true);
+  };
+
+  // Called after payment success
+  const handlePaymentSuccess = async (transactionId: string) => {
+    setPaymentTransactionId(transactionId);
+    setShowPaymentModal(false);
+    await handleSubmit(transactionId);
+  };
+
+  const handleSubmit = async (transactionId?: string) => {
     // Inline validation
     const errors: Record<string, string> = {};
     if (!guestName.trim()) errors.name = "Name is required";
@@ -157,15 +312,41 @@ export default function BookingClient({ event }: { event: EventData }) {
           setDiscountInfo(data.discount);
         }
         
+        // Clear saved form data after successful booking
+        clearSavedData();
+        
+        // Notify other tabs (dashboard) about new booking
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          const channel = new BroadcastChannel('tbo-bookings');
+          channel.postMessage({ type: 'new-booking', eventId: event.id });
+          channel.close();
+        }
+        
         setIsBooked(true);
         confetti.trigger();
       } else {
         const err = await res.json();
-        setBookingError(err.error || "Booking failed. Please try again.");
+        // Provide more specific error messages
+        if (res.status === 409) {
+          setBookingError("This room is no longer available. Please select another room.");
+        } else if (res.status === 422) {
+          setBookingError("Please check your details and try again.");
+        } else if (res.status >= 500) {
+          setBookingError("Server is temporarily unavailable. Please try again in a moment.");
+        } else {
+          setBookingError(err.error || "Booking failed. Please try again.");
+        }
       }
     } catch (e) {
       console.error(e);
-      setBookingError("Something went wrong. Please try again.");
+      // Better error messages for network issues
+      if (!navigator.onLine) {
+        setBookingError("You're offline. Please connect to the internet and try again.");
+      } else if (e instanceof TypeError && e.message.includes('fetch')) {
+        setBookingError("Network error. Please check your connection and try again.");
+      } else {
+        setBookingError("Something went wrong. Please try again.");
+      }
     }
     setIsSubmitting(false);
   };
@@ -364,6 +545,14 @@ export default function BookingClient({ event }: { event: EventData }) {
           `
         }}
       />
+
+      {/* Offline Banner */}
+      {!isOnline && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-amber-500 text-white px-4 py-2 flex items-center justify-center gap-2 text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2 duration-300">
+          <WifiOff className="h-4 w-4" />
+          <span>You're offline. Your progress is saved and will sync when you reconnect.</span>
+        </div>
+      )}
       
       {/* Header */}
       <header 
@@ -371,13 +560,13 @@ export default function BookingClient({ event }: { event: EventData }) {
         style={{ backgroundColor: `${event.primaryColor}05`, borderColor: `${event.primaryColor}10` }}
       >
         <div className="max-w-3xl mx-auto px-4 lg:px-6 py-3 lg:py-4 flex items-center gap-3 lg:gap-4">
-          <button 
-            onClick={() => router.back()} 
-            title="Go back"
+          <Link 
+            href={`/event/${event.slug}`}
+            title="Back to event"
             className="h-9 w-9 lg:h-10 lg:w-10 rounded-lg lg:rounded-xl flex items-center justify-center hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
           >
             <ArrowLeft className="h-4 w-4 lg:h-5 lg:w-5 text-gray-600 dark:text-zinc-400" />
-          </button>
+          </Link>
           <div className="flex-1">
             <h1 className="font-semibold text-gray-900 dark:text-zinc-100 text-sm lg:text-base">{event.name}</h1>
             <p className="text-xs lg:text-sm text-gray-500 dark:text-zinc-400">Complete your booking</p>
@@ -545,7 +734,7 @@ export default function BookingClient({ event }: { event: EventData }) {
                   key={room.id}
                   onClick={() => available > 0 && setSelectedRoom(room.id)}
                   disabled={available === 0}
-                  className={`group w-full p-4 lg:p-5 rounded-xl lg:rounded-2xl border-2 text-left transition-all duration-200 ${
+                  className={`group w-full rounded-xl lg:rounded-2xl border-2 text-left transition-all duration-200 overflow-hidden ${
                     isSelected
                       ? "shadow-md"
                       : available === 0
@@ -558,41 +747,56 @@ export default function BookingClient({ event }: { event: EventData }) {
                       : {}
                   }
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 lg:gap-2 mb-0.5 lg:mb-1">
-                        <h3 className="font-semibold text-gray-900 dark:text-zinc-100 text-sm lg:text-base">{room.roomType}</h3>
-                        {isLimited && (
-                          <span className="px-1.5 lg:px-2 py-0.5 rounded-full text-[10px] lg:text-xs font-semibold bg-amber-100 text-amber-700 flex items-center gap-0.5 lg:gap-1">
-                            <Clock className="h-2.5 w-2.5 lg:h-3 lg:w-3" /> {available} left
-                          </span>
-                        )}
-                        {available === 0 && (
-                          <span className="px-1.5 lg:px-2 py-0.5 rounded-full text-[10px] lg:text-xs font-semibold bg-red-100 text-red-600">Sold Out</span>
-                        )}
+                  {/* Room Image */}
+                  <div className="relative h-24 lg:h-28 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-zinc-800 dark:to-zinc-700 overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img 
+                      src={getRoomImage(room.roomType).url} 
+                      alt={getRoomImage(room.roomType).alt}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                    />
+                    {/* Price Tag Overlay */}
+                    <div 
+                      className="absolute top-2 right-2 px-2 py-1 rounded-lg text-white text-xs lg:text-sm font-bold shadow-lg backdrop-blur-sm"
+                      style={{ backgroundColor: `${event.primaryColor}dd` }}
+                    >
+                      ₹{room.rate.toLocaleString("en-IN")}<span className="text-[10px] font-normal opacity-80">/night</span>
+                    </div>
+                    {/* Status Badge */}
+                    {isLimited && (
+                      <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-[10px] lg:text-xs font-semibold bg-amber-500 text-white flex items-center gap-1 shadow-lg">
+                        <Clock className="h-2.5 w-2.5 lg:h-3 lg:w-3" /> Only {available} left!
                       </div>
-                      <p className="text-xs lg:text-sm text-gray-500">
-                        {room.hotelName && <span className="font-medium" style={{ color: event.primaryColor }}>{room.hotelName} • </span>}
-                        {room.floor && `Floor ${room.floor}`}
-                        {room.floor && room.wing && ' • '}
-                        {room.wing && `${room.wing} Wing`}
-                        {!room.floor && !room.wing && !room.hotelName && 'Standard accommodation'}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-bold text-lg lg:text-xl" style={{ color: event.primaryColor }}>
-                        ₹{room.rate.toLocaleString("en-IN")}
-                      </p>
-                      <p className="text-[10px] lg:text-xs text-gray-400 font-medium">/night</p>
-                    </div>
+                    )}
+                    {available === 0 && (
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                        <span className="px-3 py-1 rounded-full text-sm font-semibold bg-red-500 text-white">Sold Out</span>
+                      </div>
+                    )}
+                    {/* Selected Check */}
                     {isSelected && (
                       <div 
-                        className="h-6 w-6 lg:h-7 lg:w-7 rounded-full flex items-center justify-center shrink-0"
+                        className="absolute bottom-2 right-2 h-6 w-6 lg:h-7 lg:w-7 rounded-full flex items-center justify-center shadow-lg"
                         style={{ backgroundColor: event.primaryColor }}
                       >
                         <Check className="h-3.5 w-3.5 lg:h-4 lg:w-4 text-white" />
                       </div>
                     )}
+                  </div>
+                  {/* Room Details */}
+                  <div className="p-3 lg:p-4">
+                    <div className="flex items-center gap-1.5 lg:gap-2 mb-1">
+                      <Bed className="h-3.5 w-3.5 text-gray-400" />
+                      <h3 className="font-semibold text-gray-900 dark:text-zinc-100 text-sm lg:text-base">{room.roomType}</h3>
+                    </div>
+                    <p className="text-xs lg:text-sm text-gray-500">
+                      {room.hotelName && <span className="font-medium" style={{ color: event.primaryColor }}>{room.hotelName} • </span>}
+                      {room.floor && `Floor ${room.floor}`}
+                      {room.floor && room.wing && ' • '}
+                      {room.wing && `${room.wing} Wing`}
+                      {!room.floor && !room.wing && !room.hotelName && 'Standard accommodation'}
+                    </p>
                   </div>
                 </button>
               );
@@ -757,7 +961,7 @@ export default function BookingClient({ event }: { event: EventData }) {
               </div>
             )}
             <button
-              onClick={handleSubmit}
+              onClick={initiatePayment}
               disabled={!guestName || !selectedRoom || isSubmitting || !agreedToTerms}
               className="w-full py-3.5 rounded-xl text-white font-semibold text-sm transition-all duration-200 hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:saturate-50 flex items-center justify-center gap-2.5 shadow-lg hover:shadow-xl relative overflow-hidden"
               style={{ 
@@ -777,7 +981,8 @@ export default function BookingClient({ event }: { event: EventData }) {
                 <><Loader2 className="h-4 w-4 animate-spin" /> {processingPhase || "Processing..."}</>
               ) : (
                 <>
-                  Confirm Booking
+                  <Wallet className="h-4 w-4" />
+                  Pay & Confirm Booking
                   <ArrowRight className="h-4 w-4" />
                 </>
               )}
@@ -808,6 +1013,15 @@ export default function BookingClient({ event }: { event: EventData }) {
           </p>
         </div>
       </div>
+
+      {/* Payment Modal */}
+      <PaymentModal
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        onSuccess={handlePaymentSuccess}
+        amount={grandTotal}
+        description={`${event.name} - Room Booking`}
+      />
     </div>
   );
 }

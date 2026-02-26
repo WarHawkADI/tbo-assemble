@@ -344,7 +344,7 @@ export default function Sidebar() {
       </aside>
 
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex h-screen w-72 flex-col border-r border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+      <aside className="hidden lg:flex h-screen w-72 flex-col border-r border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" data-tour="sidebar">
         {sidebarContent}
       </aside>
     </>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Star, Send, CheckCircle, Loader2, MessageSquare } from "lucide-react";
+import { Star, Send, CheckCircle, Loader2, MessageSquare, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
 export default function FeedbackFormPage() {
@@ -101,6 +101,15 @@ export default function FeedbackFormPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-zinc-950 dark:to-zinc-900 py-12 px-4">
       <div className="max-w-lg mx-auto">
+        {/* Back Button */}
+        <Link
+          href={`/event/${params.slug}`}
+          className="inline-flex items-center gap-2 mb-6 px-4 py-2 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-white/50 dark:hover:bg-zinc-800/50 rounded-lg transition-colors text-sm font-medium"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Event
+        </Link>
+        
         {/* Header */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center mx-auto mb-4">

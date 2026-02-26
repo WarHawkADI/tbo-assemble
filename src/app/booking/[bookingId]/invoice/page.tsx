@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
 interface BookingDetail {
   id: string;
@@ -106,8 +107,15 @@ export default function InvoicePage() {
       `}</style>
 
       <div className="min-h-screen bg-zinc-50 py-8 px-4">
-        {/* Print Button */}
-        <div className="no-print max-w-3xl mx-auto mb-4 flex justify-end">
+        {/* Navigation & Print Button */}
+        <div className="no-print max-w-3xl mx-auto mb-4 flex justify-between items-center">
+          <Link
+            href={`/booking/${params.bookingId}`}
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors text-sm font-medium"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Booking
+          </Link>
           <button
             onClick={() => window.print()}
             className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors text-sm"

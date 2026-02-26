@@ -161,7 +161,7 @@ export function ActivityLog({ eventId }: ActivityLogProps) {
   }
 
   return (
-    <div className="relative">
+    <div className="relative" data-tour="activity-log">
       {/* Filter and Export Toolbar */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">

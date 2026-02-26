@@ -1,12 +1,287 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Sparkles, Upload, FileText, Image, Check, Loader2, Zap, FileCheck, ArrowLeft, ArrowRight, Pencil, Plus, Trash2, Save, Building2 } from "lucide-react";
+import { Sparkles, Upload, FileText, Image, Check, Loader2, Zap, FileCheck, ArrowLeft, ArrowRight, Pencil, Plus, Trash2, Save, Building2, BookTemplate, Hotel, AlertCircle, WifiOff, RefreshCw } from "lucide-react";
 import { useToast } from "@/components/ui/toaster";
 import Link from "next/link";
+
+// Offline detection hook
+function useOnlineStatus() {
+  const [isOnline, setIsOnline] = useState(true);
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+  return isOnline;
+}
+
+// Auto-save draft to localStorage
+function useDraftPersistence(parsedData: ParsedEventData | null, setParsedData: (data: ParsedEventData | null) => void) {
+  const STORAGE_KEY = 'event-draft';
+  const [hasDraft, setHasDraft] = useState(false);
+
+  // Check for existing draft on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.timestamp && Date.now() - parsed.timestamp < 7 * 24 * 60 * 60 * 1000) {
+          setHasDraft(true);
+        } else {
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to check draft:', e);
+    }
+  }, []);
+
+  // Save draft when data changes
+  useEffect(() => {
+    if (parsedData && (parsedData.invite?.eventName || parsedData.contract?.venue)) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          data: parsedData,
+          timestamp: Date.now()
+        }));
+      } catch (e) {
+        console.warn('Failed to save draft:', e);
+      }
+    }
+  }, [parsedData]);
+
+  const restoreDraft = useCallback(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setParsedData(parsed.data);
+        return true;
+      }
+    } catch (e) {
+      console.warn('Failed to restore draft:', e);
+    }
+    return false;
+  }, [setParsedData]);
+
+  const clearDraft = useCallback(() => {
+    localStorage.removeItem(STORAGE_KEY);
+    setHasDraft(false);
+  }, []);
+
+  return { hasDraft, restoreDraft, clearDraft };
+}
+
+// Validation helper for event data
+function validateEventData(data: ParsedEventData | null): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  
+  if (!data) {
+    errors.push("No event data to validate");
+    return { isValid: false, errors };
+  }
+
+  // Check venue
+  if (!data.contract?.venue || data.contract.venue === "Unknown Venue") {
+    errors.push("Venue name is required");
+  }
+
+  // Check event name
+  if (!data.invite?.eventName && !data.contract?.eventName) {
+    errors.push("Event name is required");
+  }
+
+  // Check dates
+  if (!data.contract?.checkIn || !data.contract?.checkOut) {
+    errors.push("Check-in and check-out dates are required");
+  } else {
+    const checkIn = new Date(data.contract.checkIn);
+    const checkOut = new Date(data.contract.checkOut);
+    if (checkOut <= checkIn) {
+      errors.push("Check-out date must be after check-in date");
+    }
+  }
+
+  // Check rooms
+  if (!data.contract?.rooms || data.contract.rooms.length === 0) {
+    errors.push("At least one room block is required");
+  } else {
+    data.contract.rooms.forEach((room, idx) => {
+      if (!room.roomType) errors.push(`Room #${idx + 1}: Room type is required`);
+      if (!room.rate || room.rate <= 0) errors.push(`Room #${idx + 1}: Valid rate is required`);
+      if (!room.quantity || room.quantity <= 0) errors.push(`Room #${idx + 1}: Quantity must be at least 1`);
+    });
+  }
+
+  return { isValid: errors.length === 0, errors };
+}
+
+// Contract Template Library - Pre-made sample contracts for instant demos
+const CONTRACT_TEMPLATES = [
+  {
+    id: "taj-udaipur",
+    name: "Taj Lake Palace, Udaipur",
+    type: "Destination Wedding",
+    icon: "🏰",
+    description: "Luxury wedding on Lake Pichola",
+    color: "#8B1A4A",
+    accentColor: "#D4A574",
+    data: {
+      invite: { eventName: "Royal Lakeside Wedding", eventType: "wedding", primaryColor: "#8B1A4A", secondaryColor: "#FFF5F5", accentColor: "#D4A574", description: "An elegant celebration on the serene waters of Lake Pichola" },
+      contract: {
+        venue: "Taj Lake Palace", location: "Udaipur, Rajasthan", checkIn: "2026-04-15", checkOut: "2026-04-18",
+        rooms: [
+          { roomType: "Palace Room Lake View", rate: 45000, quantity: 30, floor: "1-2", wing: "Heritage" },
+          { roomType: "Luxury Suite", rate: 75000, quantity: 10, floor: "2", wing: "Royal" },
+          { roomType: "Grand Presidential Suite", rate: 150000, quantity: 2, floor: "3", wing: "Royal" },
+        ],
+        addOns: [
+          { name: "Airport Transfer (Luxury Sedan)", isIncluded: false, price: 3500 },
+          { name: "Boat Arrival Experience", isIncluded: true, price: 0 },
+          { name: "Welcome Drink & Garland", isIncluded: true, price: 0 },
+          { name: "Spa Package (60 min)", isIncluded: false, price: 8000 },
+        ],
+        attritionRules: [
+          { releaseDate: "2026-03-15", releasePercent: 30, description: "30 days before: 30% rooms releasable" },
+          { releaseDate: "2026-04-01", releasePercent: 15, description: "14 days before: 15% rooms releasable" },
+        ],
+        confidenceScore: 95,
+      }
+    }
+  },
+  {
+    id: "marriott-bangalore",
+    name: "Marriott Convention Centre, Bangalore",
+    type: "MICE Conference",
+    icon: "🎯",
+    description: "Tech summit for 500+ delegates",
+    color: "#1E3A5F",
+    accentColor: "#3B82F6",
+    data: {
+      invite: { eventName: "TechSummit India 2026", eventType: "conference", primaryColor: "#1E3A5F", secondaryColor: "#F0F9FF", accentColor: "#3B82F6", description: "India's premier technology conference bringing together 500+ tech leaders" },
+      contract: {
+        venue: "JW Marriott Convention Centre", location: "Bangalore, Karnataka", checkIn: "2026-05-20", checkOut: "2026-05-23",
+        rooms: [
+          { roomType: "Deluxe Room", rate: 12000, quantity: 100, floor: "4-8", wing: "Tower A" },
+          { roomType: "Executive Suite", rate: 22000, quantity: 20, floor: "9-10", wing: "Tower A" },
+          { roomType: "Club Room", rate: 18000, quantity: 30, floor: "11-12", wing: "Tower B" },
+        ],
+        addOns: [
+          { name: "Conference Kit & Badge", isIncluded: true, price: 0 },
+          { name: "Full Day Catering", isIncluded: true, price: 0 },
+          { name: "Airport Pickup (Shared)", isIncluded: false, price: 1500 },
+          { name: "Networking Dinner Pass", isIncluded: false, price: 4500 },
+        ],
+        attritionRules: [
+          { releaseDate: "2026-04-20", releasePercent: 40, description: "30 days before: 40% rooms releasable" },
+          { releaseDate: "2026-05-10", releasePercent: 20, description: "10 days before: 20% rooms releasable" },
+        ],
+        confidenceScore: 92,
+      }
+    }
+  },
+  {
+    id: "itc-grand-chola",
+    name: "ITC Grand Chola, Chennai",
+    type: "Corporate Retreat",
+    icon: "🏢",
+    description: "Annual leadership summit",
+    color: "#4A1942",
+    accentColor: "#C49B66",
+    data: {
+      invite: { eventName: "Annual Leadership Summit", eventType: "corporate", primaryColor: "#4A1942", secondaryColor: "#FDF8F3", accentColor: "#C49B66", description: "Empowering leaders for the future - Annual offsite & strategy meet" },
+      contract: {
+        venue: "ITC Grand Chola", location: "Chennai, Tamil Nadu", checkIn: "2026-06-10", checkOut: "2026-06-12",
+        rooms: [
+          { roomType: "Tower Room", rate: 14000, quantity: 50, floor: "5-10", wing: "Tower" },
+          { roomType: "Club Room", rate: 20000, quantity: 25, floor: "11-14", wing: "Tower" },
+          { roomType: "Grand Chola Suite", rate: 55000, quantity: 5, floor: "15", wing: "Premier" },
+        ],
+        addOns: [
+          { name: "Executive Boardroom (half day)", isIncluded: true, price: 0 },
+          { name: "Business Centre Access", isIncluded: true, price: 0 },
+          { name: "Team Dinner at Dakshin", isIncluded: false, price: 3500 },
+          { name: "Golf Session", isIncluded: false, price: 7500 },
+        ],
+        attritionRules: [
+          { releaseDate: "2026-05-25", releasePercent: 25, description: "15 days before: 25% rooms releasable" },
+        ],
+        confidenceScore: 88,
+      }
+    }
+  },
+  {
+    id: "oberoi-amarvilas",
+    name: "Oberoi Amarvilas, Agra",
+    type: "Anniversary Celebration",
+    icon: "💎",
+    description: "Golden anniversary at Taj view",
+    color: "#B8860B",
+    accentColor: "#FFD700",
+    data: {
+      invite: { eventName: "Golden Anniversary Celebration", eventType: "anniversary", primaryColor: "#B8860B", secondaryColor: "#FFFEF0", accentColor: "#FFD700", description: "Celebrating 50 glorious years with a view of the Taj Mahal" },
+      contract: {
+        venue: "The Oberoi Amarvilas", location: "Agra, Uttar Pradesh", checkIn: "2026-03-20", checkOut: "2026-03-22",
+        rooms: [
+          { roomType: "Premier Room Taj View", rate: 48000, quantity: 15, floor: "1-2", wing: "Main" },
+          { roomType: "Luxury Suite Taj View", rate: 85000, quantity: 5, floor: "2", wing: "Suite" },
+          { roomType: "Kohinoor Suite", rate: 250000, quantity: 1, floor: "3", wing: "Royal" },
+        ],
+        addOns: [
+          { name: "Champagne Welcome", isIncluded: true, price: 0 },
+          { name: "Sunrise Taj Visit", isIncluded: false, price: 5000 },
+          { name: "Private Dinner at Bellevue", isIncluded: false, price: 12000 },
+          { name: "Couple Spa Treatment", isIncluded: false, price: 15000 },
+        ],
+        attritionRules: [
+          { releaseDate: "2026-03-05", releasePercent: 20, description: "15 days before: 20% rooms releasable" },
+        ],
+        confidenceScore: 96,
+      }
+    }
+  },
+  {
+    id: "budget-goa",
+    name: "La Calypso Resort, Goa",
+    type: "College Reunion",
+    icon: "🏖️",
+    description: "10-year reunion by the beach",
+    color: "#0891B2",
+    accentColor: "#06B6D4",
+    data: {
+      invite: { eventName: "Class of 2016 Reunion", eventType: "event", primaryColor: "#0891B2", secondaryColor: "#F0FDFF", accentColor: "#06B6D4", description: "10 years later - reconnecting by the beach!" },
+      contract: {
+        venue: "La Calypso Beach Resort", location: "Baga, Goa", checkIn: "2026-12-27", checkOut: "2026-12-30",
+        rooms: [
+          { roomType: "Standard Room", rate: 4500, quantity: 40, floor: "Ground", wing: "Beach" },
+          { roomType: "Sea View Room", rate: 6500, quantity: 20, floor: "1", wing: "Beach" },
+          { roomType: "Family Suite", rate: 9000, quantity: 10, floor: "2", wing: "Main" },
+        ],
+        addOns: [
+          { name: "Beach Party Pass", isIncluded: true, price: 0 },
+          { name: "Breakfast Buffet", isIncluded: true, price: 0 },
+          { name: "Water Sports Package", isIncluded: false, price: 2500 },
+          { name: "North Goa Tour", isIncluded: false, price: 1500 },
+        ],
+        attritionRules: [
+          { releaseDate: "2026-12-15", releasePercent: 50, description: "12 days before: 50% rooms releasable" },
+        ],
+        confidenceScore: 90,
+      }
+    }
+  },
+];
 
 interface RoomBlock {
   roomType: string;
@@ -107,6 +382,40 @@ function generateEventDescription(data: ParsedEventData): string {
   return desc;
 }
 
+// Field-level confidence indicator component
+// Shows a colored dot and tooltip based on confidence level
+const FieldConfidence = ({ 
+  hasValue, 
+  isFromOCR = false, 
+  fieldName 
+}: { 
+  hasValue: boolean; 
+  isFromOCR?: boolean; 
+  fieldName: string;
+}) => {
+  // Determine confidence: green if has valid value, yellow if OCR-extracted, red if missing
+  const confidence = hasValue ? (isFromOCR ? 'medium' : 'high') : 'low';
+  
+  const colors = {
+    high: 'bg-emerald-500',
+    medium: 'bg-amber-500', 
+    low: 'bg-red-400'
+  };
+  
+  const tooltips = {
+    high: `${fieldName}: Extracted with high confidence`,
+    medium: `${fieldName}: OCR-extracted, please verify`,
+    low: `${fieldName}: Not found, please enter manually`
+  };
+  
+  return (
+    <span 
+      className={`inline-block w-1.5 h-1.5 rounded-full ${colors[confidence]} ml-1.5`}
+      title={tooltips[confidence]}
+    />
+  );
+};
+
 export default function OnboardingPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -120,6 +429,45 @@ export default function OnboardingPage() {
   const [processingMessage, setProcessingMessage] = useState("");
   const [contractPreview, setContractPreview] = useState<string | null>(null);
   const [invitePreview, setInvitePreview] = useState<string | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  // Online status detection
+  const isOnline = useOnlineStatus();
+  
+  // Draft persistence
+  const { hasDraft, restoreDraft, clearDraft } = useDraftPersistence(parsedData, setParsedData);
+
+  // Restore draft handler
+  const handleRestoreDraft = () => {
+    if (restoreDraft()) {
+      setStep("review");
+      toast({
+        title: "Draft Restored",
+        description: "Your previous work has been restored. You can continue editing.",
+      });
+    }
+  };
+  
+  // Load a contract template
+  const loadTemplate = (templateId: string) => {
+    const template = CONTRACT_TEMPLATES.find(t => t.id === templateId);
+    if (template) {
+      setStep("processing");
+      setProcessingMessage("Loading template: " + template.name);
+      
+      // Simulate processing delay for effect
+      setTimeout(() => {
+        setParsedData(template.data as ParsedEventData);
+        setStep("review");
+        toast({ 
+          title: "Template Loaded", 
+          description: `"${template.name}" sample contract loaded successfully.` 
+        });
+      }, 1500);
+    }
+    setShowTemplates(false);
+  };
   
   // Generate preview URL when file is selected
   const handleContractFile = (file: File | null) => {
@@ -281,6 +629,13 @@ export default function OnboardingPage() {
       toast({ title: "No documents", description: "Please upload at least one document before parsing.", variant: "destructive" });
       return;
     }
+    
+    // Check online status
+    if (!navigator.onLine) {
+      toast({ title: "You're Offline", description: "Please connect to the internet to parse documents.", variant: "destructive" });
+      return;
+    }
+    
     setStep("processing");
     setError("");
 
@@ -365,6 +720,25 @@ export default function OnboardingPage() {
   };
 
   const handlePublish = async () => {
+    // Check online status first
+    if (!navigator.onLine) {
+      toast({ title: "You're Offline", description: "Please connect to the internet to publish your event.", variant: "destructive" });
+      return;
+    }
+    
+    // Validate data before publishing
+    const validation = validateEventData(parsedData);
+    if (!validation.isValid) {
+      setValidationErrors(validation.errors);
+      toast({ 
+        title: "Validation Failed", 
+        description: `Please fix ${validation.errors.length} issue${validation.errors.length > 1 ? 's' : ''} before publishing.`, 
+        variant: "destructive" 
+      });
+      return;
+    }
+    setValidationErrors([]);
+    
     setStep("processing");
     try {
       const res = await fetch("/api/events", {
@@ -376,6 +750,10 @@ export default function OnboardingPage() {
       if (!res.ok) throw new Error("Failed to create event");
 
       const event = await res.json();
+      
+      // Clear the saved draft on successful publish
+      clearDraft();
+      
       setStep("done");
       setTimeout(() => {
         router.push(`/dashboard/events/${event.id}`);
@@ -461,6 +839,38 @@ export default function OnboardingPage() {
       {/* Upload Step */}
       {step === "upload" && (
         <div className="space-y-5">
+          {/* Offline Banner */}
+          {!isOnline && (
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
+              <WifiOff className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-300">You're offline</p>
+                <p className="text-xs text-amber-600 dark:text-amber-400">Connect to the internet to parse documents</p>
+              </div>
+            </div>
+          )}
+          
+          {/* Draft Restore Banner */}
+          {hasDraft && (
+            <div className="flex items-center justify-between p-4 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50">
+              <div className="flex items-center gap-3">
+                <RefreshCw className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <div>
+                  <p className="text-sm font-medium text-blue-800 dark:text-blue-300">Resume your work?</p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400">You have an unsaved event draft</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={handleRestoreDraft} size="sm" variant="default" className="bg-blue-600 hover:bg-blue-700">
+                  Restore Draft
+                </Button>
+                <Button onClick={clearDraft} size="sm" variant="ghost" className="text-blue-600 hover:text-blue-800">
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          )}
+          
           <div
             className={`grid grid-cols-1 md:grid-cols-2 gap-5 rounded-xl transition-all ${isDragging ? 'border-2 border-orange-500 bg-orange-50 dark:bg-orange-950/20' : ''}`}
             onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -594,6 +1004,55 @@ export default function OnboardingPage() {
             </Button>
           </div>
 
+          {/* Template Library Toggle */}
+          <div className="text-center">
+            <button 
+              onClick={() => setShowTemplates(!showTemplates)}
+              className="text-sm text-gray-500 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 underline underline-offset-4 transition-colors"
+            >
+              {showTemplates ? 'Hide sample contracts' : 'Or choose from sample contracts →'}
+            </button>
+          </div>
+
+          {/* Template Library */}
+          {showTemplates && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <BookTemplate className="h-3.5 w-3.5" />
+                <span>Sample Contract Templates — Click to load instantly</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {CONTRACT_TEMPLATES.map((template) => (
+                  <button
+                    key={template.id}
+                    onClick={() => loadTemplate(template.id)}
+                    className="group text-left p-3 rounded-xl border border-gray-200 dark:border-zinc-700 hover:border-orange-400 dark:hover:border-orange-500 hover:bg-orange-50/50 dark:hover:bg-orange-950/20 transition-all"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="text-2xl">{template.icon}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-sm text-gray-900 dark:text-gray-100 group-hover:text-orange-700 dark:group-hover:text-orange-400 truncate">
+                          {template.name}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                          {template.description}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300">
+                            {template.type}
+                          </span>
+                          <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                            {template.data.contract.rooms.length} room types
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Info Box */}
           <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border border-amber-200/50 dark:border-amber-800/40 rounded-xl p-4">
             <div className="flex gap-3">
@@ -644,6 +1103,28 @@ export default function OnboardingPage() {
       {/* Review Step */}
       {step === "review" && parsedData && (
         <div className="space-y-5">
+          {/* Validation Errors Banner */}
+          {validationErrors.length > 0 && (
+            <div className="rounded-xl border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-950/30 p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-red-800 dark:text-red-300 mb-2">
+                    Please fix the following issues before publishing:
+                  </p>
+                  <ul className="space-y-1">
+                    {validationErrors.map((err, idx) => (
+                      <li key={idx} className="text-xs text-red-700 dark:text-red-400 flex items-center gap-1.5">
+                        <span className="w-1 h-1 rounded-full bg-red-500" />
+                        {err}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+          
           {/* Edit Toggle Banner */}
           {!isEditing && (
             <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-xl px-4 py-3">
@@ -739,7 +1220,10 @@ export default function OnboardingPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 {/* Event Name */}
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide">Event Name</label>
+                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide flex items-center">
+                    Event Name
+                    <FieldConfidence hasValue={!!(parsedData.invite?.eventName || parsedData.contract?.eventName)} fieldName="Event Name" />
+                  </label>
                   {isEditing ? (
                     <input
                       className="w-full text-sm font-semibold text-gray-900 dark:text-zinc-100 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400"
@@ -755,7 +1239,10 @@ export default function OnboardingPage() {
                 </div>
                 {/* Event Type */}
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide">Type</label>
+                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide flex items-center">
+                    Type
+                    <FieldConfidence hasValue={!!(parsedData.invite?.eventType || parsedData.contract?.eventType)} fieldName="Event Type" />
+                  </label>
                   {isEditing ? (
                     <select
                       className="w-full text-sm font-semibold text-gray-900 dark:text-zinc-100 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400"
@@ -781,7 +1268,10 @@ export default function OnboardingPage() {
                 </div>
                 {/* Venue */}
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide">Venue</label>
+                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide flex items-center">
+                    Venue
+                    <FieldConfidence hasValue={!!parsedData.contract?.venue} isFromOCR={true} fieldName="Venue" />
+                  </label>
                   {isEditing ? (
                     <input
                       className="w-full text-sm font-semibold text-gray-900 dark:text-zinc-100 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400"
@@ -794,7 +1284,10 @@ export default function OnboardingPage() {
                 </div>
                 {/* Location */}
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide">Location</label>
+                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide flex items-center">
+                    Location
+                    <FieldConfidence hasValue={!!parsedData.contract?.location} isFromOCR={true} fieldName="Location" />
+                  </label>
                   {isEditing ? (
                     <input
                       className="w-full text-sm font-semibold text-gray-900 dark:text-zinc-100 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400"
@@ -807,7 +1300,10 @@ export default function OnboardingPage() {
                 </div>
                 {/* Check-in */}
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide">Check-in</label>
+                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide flex items-center">
+                    Check-in
+                    <FieldConfidence hasValue={!!parsedData.contract?.checkIn} isFromOCR={true} fieldName="Check-in Date" />
+                  </label>
                   {isEditing ? (
                     <input
                       type="date"
@@ -821,7 +1317,10 @@ export default function OnboardingPage() {
                 </div>
                 {/* Check-out */}
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide">Check-out</label>
+                  <label className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wide flex items-center">
+                    Check-out
+                    <FieldConfidence hasValue={!!parsedData.contract?.checkOut} isFromOCR={true} fieldName="Check-out Date" />
+                  </label>
                   {isEditing ? (
                     <input
                       type="date"

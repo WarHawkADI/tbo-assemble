@@ -75,9 +75,48 @@ TBO Assemble replaces this chaos with an intelligent, end-to-end platform in thr
 
 ## Core Features
 
-### 🤖 GenAI Contract Parsing (GPT-4o)
+### 🤖 GenAI Contract Parsing (GPT-4o + Local OCR Fallback)
 
-Upload a hotel contract PDF and event invitation document. GPT-4o extracts room blocks, negotiated rates, check-in/check-out dates, attrition penalties, venue details, and theme colours — generating a fully branded event microsite in under 60 seconds. The AI pipeline handles multi-format contracts, messy PDFs, and even scanned documents via `pdf-parse`.
+Upload a hotel contract PDF and event invitation document. Our intelligent extraction pipeline uses:
+
+1. **PDF Text Extraction** — `pdf-parse` extracts text from digital PDFs  
+2. **JPEG Page Extraction** — Falls back to image conversion for scanned PDFs  
+3. **OCR Processing** — `tesseract.js` with `sharp` preprocessing for image-based documents  
+4. **AI Enhancement** — GPT-4o structures the extracted text into event data
+
+The parser extracts room blocks, negotiated rates, check-in/check-out dates, attrition penalties, venue details, and theme colours — generating a fully branded event microsite in under 60 seconds. Includes **OCR correction patterns** for common scan errors (O→0, l→1, currency symbols), **date validation** to filter impossible dates, and **smart year inference** for dates without explicit years.
+
+### 📋 Contract Template Library
+
+Five pre-configured sample contracts for instant demos — no file upload required:
+
+| Template | Type | Venue |
+| -------- | ---- | ----- |
+| 🏰 Taj Lake Palace | Destination Wedding | Udaipur |
+| 🎯 Marriott Convention | MICE Conference | Bangalore |
+| 🏢 ITC Grand Chola | Corporate Retreat | Chennai |
+| 💎 Oberoi Amarvilas | Anniversary | Agra |
+| 🏖️ La Calypso Resort | College Reunion | Goa |
+
+### 📱 Offline-First Resilience
+
+Both the booking microsite and event creation wizard feature:
+
+- **Network Detection** — Real-time online/offline status monitoring
+- **Offline Banner** — Visual indicator when connectivity is lost
+- **Form Persistence** — Auto-saves progress to `localStorage` every change
+- **Draft Recovery** — Restores interrupted work on page reload (24h for booking, 7 days for events)
+- **Graceful Degradation** — Informative error messages for network failures
+
+### 🔄 Cross-Tab Real-Time Sync
+
+Instant dashboard updates when bookings are made from the microsite (even in another browser tab):
+
+- **BroadcastChannel API** — Native browser API for cross-tab communication
+- **Auto-Refresh Dashboard** — Event list updates instantly when a new booking is made
+- **Check-In Page Sync** — Bookings list refreshes automatically for check-in staff
+- **Event Detail Sync** — Server components refresh via `router.refresh()` for accurate stats
+- **No Polling Required** — Zero server load, instant updates, works offline-first
 
 ### 🏨 Visual Proximity Allocator
 
@@ -284,6 +323,9 @@ Each event generates a branded public microsite at `/event/[slug]` with:
 | **Status Timeline** | Visual booking status progression |
 | **Group Discounts** | Auto-applied volume discounts with "Best Value" badges |
 | **Server-Side Pricing** | Total computed server-side — client cannot manipulate prices |
+| **Offline Resilience** | Auto-saves form progress, displays offline banner, retry logic on network errors |
+| **Form Recovery** | Restores guest details from localStorage on page refresh (24h expiry) |
+| **Smart Error Messages** | Context-aware error messages: sold out, validation failed, network error, offline |
 
 ---
 
@@ -310,12 +352,12 @@ Each event generates a branded public microsite at `/event/[slug]` with:
 
 | Component | Description |
 | --------- | ----------- |
-| `DashboardClient` | Main dashboard with event cards, KPIs, search, status filters |
+| `DashboardClient` | Main dashboard with event cards, KPIs, search, status filters, **cross-tab sync via BroadcastChannel** |
 | `EventEditForm` | Full event editing with date validation (check-out > check-in), `router.refresh()` on save |
 | `GuestManagement` | Guest list with search, status filters, inline editing, CSV import, individual delete |
 | `AllocatorClient` | Drag-and-drop floor/wing guest allocator with `@dnd-kit`, VIP badges, AI auto-allocate with reasoning |
 | `AttritionClient` | At-risk revenue display, attrition rule timelines, WhatsApp nudge triggers |
-| `CheckinClient` | QR code scanner + manual ID search + bulk mode (up to 200), real-time counter |
+| `CheckinClient` | QR code scanner + manual ID search + bulk mode (up to 200), real-time counter, **cross-tab booking sync** |
 | `DiscountRulesClient` | Volume discount CRUD with inline confirm-to-delete (3s auto-cancel) |
 | `WhatsAppSimulator` | WhatsApp message preview for nudge templates |
 | `AnalyticsCharts` | Recharts-based revenue, occupancy, and booking analytics |
@@ -337,6 +379,8 @@ Each event generates a branded public microsite at `/event/[slug]` with:
 | **Database** | Prisma + SQLite (`@prisma/adapter-better-sqlite3`) | 7.4.0 |
 | **AI** | OpenAI GPT-4o via `openai` SDK | 6.21.0 |
 | **PDF Parsing** | pdf-parse | 1.1.1 |
+| **OCR** | tesseract.js (local OCR, no cloud dependency) | 6.x |
+| **Image Processing** | sharp (preprocessing for OCR) | 0.x |
 | **Styling** | Tailwind CSS v4 + PostCSS | 4.x |
 | **UI Primitives** | Radix UI (Dialog, Dropdown, Tabs, Toast, Tooltip, Switch, Progress, Select, Label, Slot) | Various |
 | **Component Variants** | class-variance-authority (CVA) | 0.7.1 |
@@ -540,12 +584,12 @@ Agent (1) ──→ (N) Event
 | --------- | ----------- |
 | `Sidebar` | Full navigation with 4 main routes, 8 event sub-routes, keyboard shortcuts, mobile hamburger |
 | `DashboardHeader` | Top header with user welcome, notification bell, live status, collab indicator |
-| `DashboardClient` | Main dashboard with event cards, KPIs, search, status filters |
+| `DashboardClient` | Main dashboard with event cards, KPIs, search, status filters, **cross-tab booking sync** |
 | `EventEditForm` | Full event editing with date validation, `router.refresh()` |
 | `GuestManagement` | Guest list with search, filters, inline editing, CSV import, delete |
 | `AllocatorClient` | Drag-and-drop floor/wing allocator with @dnd-kit + AI auto-allocate |
 | `AttritionClient` | Attrition rules display, at-risk revenue, WhatsApp nudge panel |
-| `CheckinClient` | QR scanner + manual search + bulk check-in (up to 200) |
+| `CheckinClient` | QR scanner + manual search + bulk check-in (up to 200), **cross-tab sync** |
 | `DiscountRulesClient` | Volume discount CRUD with inline confirm-to-delete |
 | `WhatsAppSimulator` | WhatsApp message preview for nudge templates |
 | `AnalyticsCharts` | Recharts-based revenue, occupancy, booking analytics |
@@ -559,7 +603,7 @@ Agent (1) ──→ (N) Event
 
 | Component | Description |
 | --------- | ----------- |
-| `BookingClient` | Multi-step booking form: Room Select → Guest Details → Add-Ons → Review → Confirm |
+| `BookingClient` | Multi-step booking form: Room Select → Guest Details → Add-Ons → Review → Confirm. Features offline detection, form persistence to localStorage, retry logic, payment modal, smart error recovery, and **BroadcastChannel cross-tab sync** to instantly update dashboard |
 
 ---
 

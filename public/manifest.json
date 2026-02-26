@@ -3,7 +3,7 @@
   "name": "TBO Assemble",
   "short_name": "Assemble",
   "description": "AI-powered Group Travel Operating System for MICE & Weddings",
-  "start_url": "/",
+  "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
@@ -34,15 +34,59 @@
   "shortcuts": [
     {
       "name": "Dashboard",
+      "short_name": "Home",
+      "description": "View your events and bookings",
       "url": "/dashboard",
       "icons": [{ "src": "/logo.svg", "sizes": "any" }]
     },
     {
       "name": "Create Event",
+      "short_name": "New",
+      "description": "Create a new event with AI parsing",
       "url": "/dashboard/onboarding",
+      "icons": [{ "src": "/logo.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Calendar",
+      "short_name": "Calendar",
+      "description": "View event calendar",
+      "url": "/dashboard/calendar",
+      "icons": [{ "src": "/logo.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Analytics",
+      "short_name": "Stats",
+      "description": "View analytics and reports",
+      "url": "/dashboard/analytics",
       "icons": [{ "src": "/logo.svg", "sizes": "any" }]
     }
   ],
   "categories": ["travel", "business", "productivity"],
-  "prefer_related_applications": false
+  "prefer_related_applications": false,
+  "share_target": {
+    "action": "/dashboard/onboarding",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "name",
+      "text": "description",
+      "files": [{
+        "name": "contract",
+        "accept": ["application/pdf", "image/*"]
+      }]
+    }
+  },
+  "protocol_handlers": [
+    {
+      "protocol": "web+tboassemble",
+      "url": "/event/%s"
+    }
+  ],
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": ["focus-existing", "auto"]
+  },
+  "edge_side_panel": {
+    "preferred_width": 400
+  }
 }
