@@ -26,6 +26,17 @@ export async function POST(
       );
     }
 
+    // Verify event exists and is active
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) {
+      return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    }
+    if (event.status === "cancelled" || event.status === "draft") {
+      return NextResponse.json({ 
+        error: `Cannot check in guests for an event with status: ${event.status}` 
+      }, { status: 400 });
+    }
+
     // Fetch all bookings at once instead of one-by-one (fix N+1)
     const allBookings = await prisma.booking.findMany({
       where: { id: { in: bookingIds } },

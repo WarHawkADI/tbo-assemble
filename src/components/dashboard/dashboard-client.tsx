@@ -99,9 +99,12 @@ export function DashboardClient({ initialEvents }: DashboardClientProps) {
         }));
         setEvents(mapped);
         setLastRefresh(new Date());
+      } else {
+        console.error("Failed to refresh events:", res.status);
       }
-    } catch {
-      // silent fail
+    } catch (err) {
+      console.error("Network error refreshing events:", err);
+      // Don't show error for auto-refresh, only manual
     } finally {
       setRefreshing(false);
     }

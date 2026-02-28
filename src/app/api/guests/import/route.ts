@@ -1,6 +1,24 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 
+// Validation helpers
+function validateEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function validatePhone(phone: string): boolean {
+  // Remove all non-digit characters except +
+  const phoneClean = phone.replace(/[^\d+]/g, "");
+  // Accept any phone with 7-15 digits (international standard), with optional + prefix
+  // This handles: +91 98400 12345, 9840012345, +1-555-123-4567, etc.
+  return /^\+?\d{7,15}$/.test(phoneClean);
+}
+
+function normalizePhone(phone: string): string {
+  // Keep the original format but trim whitespace
+  return phone.trim();
+}
+
 // POST - Import guests from CSV data
 export async function POST(request: Request) {
   try {
@@ -28,20 +46,36 @@ export async function POST(request: Request) {
     }
 
     const created: string[] = [];
-    const errors: { row: number; error: string }[] = [];
+    const errors: { row: number; name: string; error: string }[] = [];
     const guestsToCreate: { name: string; email: string | null; phone: string | null; group: string | null; notes: string | null; proximityRequest: string | null; status: string; eventId: string }[] = [];
 
     for (let i = 0; i < guests.length; i++) {
       const row = guests[i];
       const name = row.name || row.Name || row.guest_name || row["Guest Name"];
-      if (!name) {
-        errors.push({ row: i + 1, error: "Missing name" });
+      const email = row.email || row.Email || row["E-mail"] || "";
+      const phone = row.phone || row.Phone || row["Phone Number"] || row.mobile || row.Mobile || "";
+      
+      if (!name || !name.trim()) {
+        errors.push({ row: i + 1, name: "Unknown", error: "Missing name" });
         continue;
       }
+
+      // Validate email if provided
+      if (email && !validateEmail(email)) {
+        errors.push({ row: i + 1, name, error: "Invalid email format" });
+        continue;
+      }
+
+      // Validate phone if provided
+      if (phone && !validatePhone(phone)) {
+        errors.push({ row: i + 1, name, error: "Invalid phone number format" });
+        continue;
+      }
+
       guestsToCreate.push({
-        name,
-        email: row.email || row.Email || row["E-mail"] || null,
-        phone: row.phone || row.Phone || row["Phone Number"] || null,
+        name: name.trim(),
+        email: email ? email.trim().toLowerCase() : null,
+        phone: phone ? normalizePhone(phone) : null,
         group: row.group || row.Group || row["Guest Group"] || null,
         notes: row.notes || row.Notes || null,
         proximityRequest: row.proximity || row.Proximity || row["Proximity Request"] || null,
@@ -79,7 +113,7 @@ export async function POST(request: Request) {
       success: true,
       imported: created.length,
       failed: errors.length,
-      errors: errors.slice(0, 10), // Return first 10 errors
+      errors: errors.slice(0, 20), // Return first 20 errors for better debugging
     });
   } catch (error) {
     console.error("Import guests error:", error);

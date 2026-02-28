@@ -256,6 +256,77 @@ export default async function EventOverviewPage({
         </Link>
       </div>
 
+      {/* New Feature Links */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <Link href={`/dashboard/events/${eventId}/rfp`}>
+          <Card className="border-0 shadow-sm hover:shadow-md hover:scale-[1.02] transition-all cursor-pointer group">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-200/50">
+                  <BarChart3 className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900 dark:text-zinc-100 group-hover:text-cyan-600 transition-colors">RFP Dashboard</h3>
+                  <p className="text-sm text-gray-500 dark:text-zinc-400 mt-0.5">Compare vendor quotes</p>
+                </div>
+                <ArrowRight className="h-5 w-5 text-gray-300 dark:text-zinc-600 group-hover:text-cyan-500 group-hover:translate-x-1 transition-all" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href={`/dashboard/events/${eventId}/schedule`}>
+          <Card className="border-0 shadow-sm hover:shadow-md hover:scale-[1.02] transition-all cursor-pointer group">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow-md shadow-pink-200/50">
+                  <Calendar className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900 dark:text-zinc-100 group-hover:text-pink-600 transition-colors">Event Schedule</h3>
+                  <p className="text-sm text-gray-500 dark:text-zinc-400 mt-0.5">Day-wise agenda & costing</p>
+                </div>
+                <ArrowRight className="h-5 w-5 text-gray-300 dark:text-zinc-600 group-hover:text-pink-500 group-hover:translate-x-1 transition-all" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href={`/dashboard/events/${eventId}/rooms`}>
+          <Card className="border-0 shadow-sm hover:shadow-md hover:scale-[1.02] transition-all cursor-pointer group">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white shadow-md shadow-teal-200/50">
+                  <Hotel className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900 dark:text-zinc-100 group-hover:text-teal-600 transition-colors">Room Assignments</h3>
+                  <p className="text-sm text-gray-500 dark:text-zinc-400 mt-0.5">Multi-guest per room</p>
+                </div>
+                <ArrowRight className="h-5 w-5 text-gray-300 dark:text-zinc-600 group-hover:text-teal-500 group-hover:translate-x-1 transition-all" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href={`/dashboard/events/${eventId}/pax`}>
+          <Card className="border-0 shadow-sm hover:shadow-md hover:scale-[1.02] transition-all cursor-pointer group">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-200/50">
+                  <Users className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900 dark:text-zinc-100 group-hover:text-indigo-600 transition-colors">Pax & Quotes</h3>
+                  <p className="text-sm text-gray-500 dark:text-zinc-400 mt-0.5">Dynamic pricing & PDF quote</p>
+                </div>
+                <ArrowRight className="h-5 w-5 text-gray-300 dark:text-zinc-600 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+      </div>
+
       {/* Room Blocks Summary */}
       <Card className="border-0 shadow-sm overflow-hidden">
         <CardHeader className="bg-gradient-to-br from-slate-50 to-gray-50 dark:from-zinc-800 dark:to-zinc-800 border-b border-gray-100 dark:border-zinc-700">

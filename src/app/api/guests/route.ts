@@ -64,6 +64,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
     }
 
+    // Validate phone format - accept 7-15 digits with optional +
+    if (phone) {
+      const phoneClean = phone.replace(/[^\d+]/g, "");
+      if (!/^\+?\d{7,15}$/.test(phoneClean)) {
+        return NextResponse.json({ error: "Invalid phone number format. Please enter a valid phone number." }, { status: 400 });
+      }
+    }
+
     // Check event exists
     const event = await prisma.event.findUnique({ where: { id: eventId } });
     if (!event) {
@@ -74,7 +82,7 @@ export async function POST(request: Request) {
     const guest = await prisma.guest.create({
       data: {
         name,
-        email: email || null,
+        email: email ? email.trim().toLowerCase() : null,
         phone: phone || null,
         group: group || null,
         notes: notes || null,
@@ -117,6 +125,14 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
     }
 
+    // Validate phone format - accept 7-15 digits with optional +
+    if (phone) {
+      const phoneClean = phone.replace(/[^\d+]/g, "");
+      if (!/^\+?\d{7,15}$/.test(phoneClean)) {
+        return NextResponse.json({ error: "Invalid phone number format" }, { status: 400 });
+      }
+    }
+
     // Check guest exists before updating
     const existing = await prisma.guest.findUnique({ where: { id } });
     if (!existing) {
@@ -127,7 +143,7 @@ export async function PUT(request: Request) {
       where: { id },
       data: {
         ...(name !== undefined && { name }),
-        ...(email !== undefined && { email }),
+        ...(email !== undefined && { email: email ? email.trim().toLowerCase() : null }),
         ...(phone !== undefined && { phone }),
         ...(group !== undefined && { group }),
         ...(notes !== undefined && { notes }),

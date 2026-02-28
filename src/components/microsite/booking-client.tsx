@@ -205,9 +205,92 @@ export default function BookingClient({ event }: { event: EventData }) {
   const [processingPhase, setProcessingPhase] = useState("");
   const confetti = useConfetti();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
   const [qrLoaded, setQrLoaded] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentTransactionId, setPaymentTransactionId] = useState("");
+
+  // Validation helpers
+  const validateEmail = (email: string): string | null => {
+    if (!email.trim()) return "Email is required";
+    // RFC 5322 compliant email regex
+    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+    if (!emailRegex.test(email)) return "Please enter a valid email address";
+    // Additional checks
+    if (email.length > 254) return "Email address is too long";
+    const [local, domain] = email.split('@');
+    if (local.length > 64) return "Email address is too long";
+    if (!domain || domain.length < 3) return "Please enter a valid domain";
+    return null;
+  };
+
+  const validatePhone = (phone: string): string | null => {
+    if (!phone.trim()) return "Phone number is required";
+    // Remove all formatting characters
+    const cleaned = phone.replace(/[\s\-().+]/g, '');
+    // Must be 10-15 digits
+    if (!/^\d{10,15}$/.test(cleaned)) return "Phone must be 10-15 digits";
+    // Indian mobile validation: starts with 6-9 for 10 digit
+    if (cleaned.length === 10 && !/^[6-9]\d{9}$/.test(cleaned)) {
+      return "Invalid Indian mobile number (must start with 6-9)";
+    }
+    // With country code (like 91 for India)
+    if (cleaned.length === 12 && cleaned.startsWith('91') && !/^91[6-9]\d{9}$/.test(cleaned)) {
+      return "Invalid Indian mobile number";
+    }
+    return null;
+  };
+
+  const formatPhoneNumber = (value: string): string => {
+    // Remove all non-digits except +
+    const cleaned = value.replace(/[^\d+]/g, '');
+    // Format as +91 XXXXX XXXXX for Indian numbers
+    if (cleaned.startsWith('+91') && cleaned.length > 3) {
+      const digits = cleaned.slice(3);
+      if (digits.length <= 5) return `+91 ${digits}`;
+      if (digits.length <= 10) return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+      return `+91 ${digits.slice(0, 5)} ${digits.slice(5, 10)}`;
+    }
+    if (cleaned.startsWith('91') && cleaned.length > 2) {
+      const digits = cleaned.slice(2);
+      if (digits.length <= 5) return `+91 ${digits}`;
+      if (digits.length <= 10) return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+      return `+91 ${digits.slice(0, 5)} ${digits.slice(5, 10)}`;
+    }
+    // Plain 10-digit number
+    if (/^[6-9]\d{0,9}$/.test(cleaned)) {
+      if (cleaned.length <= 5) return cleaned;
+      if (cleaned.length <= 10) return `${cleaned.slice(0, 5)} ${cleaned.slice(5)}`;
+    }
+    return cleaned;
+  };
+
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setGuestEmail(value);
+    if (touchedFields.email) {
+      const error = validateEmail(value);
+      setFieldErrors(prev => ({ ...prev, email: error || '' }));
+    }
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneNumber(e.target.value);
+    setGuestPhone(formatted);
+    if (touchedFields.phone) {
+      const error = validatePhone(formatted);
+      setFieldErrors(prev => ({ ...prev, phone: error || '' }));
+    }
+  };
+
+  const handleFieldBlur = (field: 'email' | 'phone' | 'name') => {
+    setTouchedFields(prev => ({ ...prev, [field]: true }));
+    let error: string | null = null;
+    if (field === 'email') error = validateEmail(guestEmail);
+    else if (field === 'phone') error = validatePhone(guestPhone);
+    else if (field === 'name' && !guestName.trim()) error = 'Name is required';
+    setFieldErrors(prev => ({ ...prev, [field]: error || '' }));
+  };
 
   // Dynamic group options based on event type
   const groupOptions = (() => {
@@ -234,13 +317,13 @@ export default function BookingClient({ event }: { event: EventData }) {
     // Inline validation first
     const errors: Record<string, string> = {};
     if (!guestName.trim()) errors.name = "Name is required";
-    if (guestEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)) errors.email = "Invalid email format";
-    const phoneClean = guestPhone.replace(/[\s\-().]/g, '');
-    if (guestPhone && !/^(\+?\d{1,4})?[6-9]?\d{9,14}$/.test(phoneClean)) {
-      errors.phone = "Enter valid phone number";
-    }
+    const emailError = validateEmail(guestEmail);
+    if (emailError) errors.email = emailError;
+    const phoneError = validatePhone(guestPhone);
+    if (phoneError) errors.phone = phoneError;
     if (!selectedRoom) errors.room = "Please select a room";
     setFieldErrors(errors);
+    setTouchedFields({ name: true, email: true, phone: true });
     if (Object.keys(errors).length > 0) return;
     if (!agreedToTerms) return;
     
@@ -259,14 +342,13 @@ export default function BookingClient({ event }: { event: EventData }) {
     // Inline validation
     const errors: Record<string, string> = {};
     if (!guestName.trim()) errors.name = "Name is required";
-    if (guestEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)) errors.email = "Invalid email format";
-    // More flexible phone validation: accepts +91, various country codes, or 10+ digit numbers
-    const phoneClean = guestPhone.replace(/[\s\-().]/g, '');
-    if (guestPhone && !/^(\+?\d{1,4})?[6-9]?\d{9,14}$/.test(phoneClean)) {
-      errors.phone = "Enter valid phone number";
-    }
+    const emailError = validateEmail(guestEmail);
+    if (emailError) errors.email = emailError;
+    const phoneError = validatePhone(guestPhone);
+    if (phoneError) errors.phone = phoneError;
     if (!selectedRoom) errors.room = "Please select a room";
     setFieldErrors(errors);
+    setTouchedFields({ name: true, email: true, phone: true });
     if (Object.keys(errors).length > 0) return;
 
     if (!guestName || !selectedRoom) return;
@@ -644,28 +726,67 @@ export default function BookingClient({ event }: { event: EventData }) {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
               <div>
-                <label className="text-xs lg:text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-1.5 lg:mb-2 block">Email</label>
+                <label className="text-xs lg:text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-1.5 lg:mb-2 block">
+                  Email <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="email"
                   value={guestEmail}
-                  onChange={(e) => setGuestEmail(e.target.value)}
-                  className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 dark:border-zinc-700 text-sm text-gray-900 dark:text-zinc-100 focus:outline-none focus:ring-2 transition-all bg-gray-50/50 dark:bg-zinc-800 focus:bg-white dark:focus:bg-zinc-700"
+                  onChange={handleEmailChange}
+                  onBlur={() => handleFieldBlur('email')}
+                  className={`w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border text-sm text-gray-900 dark:text-zinc-100 focus:outline-none focus:ring-2 transition-all bg-gray-50/50 dark:bg-zinc-800 focus:bg-white dark:focus:bg-zinc-700 ${
+                    fieldErrors.email && touchedFields.email
+                      ? 'border-red-400 dark:border-red-500'
+                      : guestEmail && !validateEmail(guestEmail)
+                      ? 'border-green-400 dark:border-green-500'
+                      : 'border-gray-200 dark:border-zinc-700'
+                  }`}
                   style={{ "--tw-ring-color": event.primaryColor } as React.CSSProperties}
                   placeholder="you@email.com"
+                  autoComplete="email"
                 />
-                {fieldErrors.email && <p className="text-xs text-red-500 mt-1">{fieldErrors.email}</p>}
+                {fieldErrors.email && touchedFields.email && (
+                  <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />{fieldErrors.email}
+                  </p>
+                )}
+                {guestEmail && !validateEmail(guestEmail) && (
+                  <p className="text-xs text-green-500 mt-1 flex items-center gap-1">
+                    <Check className="h-3 w-3" />Valid email
+                  </p>
+                )}
               </div>
               <div>
-                <label className="text-xs lg:text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-1.5 lg:mb-2 block">Phone</label>
+                <label className="text-xs lg:text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-1.5 lg:mb-2 block">
+                  Phone <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="tel"
                   value={guestPhone}
-                  onChange={(e) => setGuestPhone(e.target.value)}
-                  className="w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border border-gray-200 dark:border-zinc-700 text-sm text-gray-900 dark:text-zinc-100 focus:outline-none focus:ring-2 transition-all bg-gray-50/50 dark:bg-zinc-800 focus:bg-white dark:focus:bg-zinc-700"
+                  onChange={handlePhoneChange}
+                  onBlur={() => handleFieldBlur('phone')}
+                  className={`w-full px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg lg:rounded-xl border text-sm text-gray-900 dark:text-zinc-100 focus:outline-none focus:ring-2 transition-all bg-gray-50/50 dark:bg-zinc-800 focus:bg-white dark:focus:bg-zinc-700 ${
+                    fieldErrors.phone && touchedFields.phone
+                      ? 'border-red-400 dark:border-red-500'
+                      : guestPhone && !validatePhone(guestPhone)
+                      ? 'border-green-400 dark:border-green-500'
+                      : 'border-gray-200 dark:border-zinc-700'
+                  }`}
                   style={{ "--tw-ring-color": event.primaryColor } as React.CSSProperties}
-                  placeholder="+91 XXXXX XXXXX"
+                  placeholder="+91 98765 43210"
+                  autoComplete="tel"
+                  maxLength={17}
                 />
-                {fieldErrors.phone && <p className="text-xs text-red-500 mt-1">{fieldErrors.phone}</p>}
+                {fieldErrors.phone && touchedFields.phone && (
+                  <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />{fieldErrors.phone}
+                  </p>
+                )}
+                {guestPhone && !validatePhone(guestPhone) && (
+                  <p className="text-xs text-green-500 mt-1 flex items-center gap-1">
+                    <Check className="h-3 w-3" />Valid phone number
+                  </p>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">

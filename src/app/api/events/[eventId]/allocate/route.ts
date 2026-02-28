@@ -9,9 +9,27 @@ export async function POST(
     const { eventId } = await params;
     const { allocations } = await request.json();
 
+    // Verify event exists
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) {
+      return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    }
+
     // allocations: Record<guestId, { floor, wing }>
     const allocationCount = Object.keys(allocations).length;
+    const guestIds = Object.keys(allocations);
+    
+    // Verify all guests belong to this event
+    const guests = await prisma.guest.findMany({
+      where: { id: { in: guestIds }, eventId },
+      select: { id: true },
+    });
+    const validGuestIds = new Set(guests.map(g => g.id));
+    
     for (const [guestId, alloc] of Object.entries(allocations)) {
+      if (!validGuestIds.has(guestId)) {
+        return NextResponse.json({ error: `Guest ${guestId} not found in this event` }, { status: 400 });
+      }
       const { floor, wing } = alloc as { floor: string; wing: string };
       await prisma.guest.update({
         where: { id: guestId },

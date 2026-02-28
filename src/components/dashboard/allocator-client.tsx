@@ -61,6 +61,7 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
   });
 
   const [draggedGuest, setDraggedGuest] = useState<string | null>(null);
+  const [selectedGuest, setSelectedGuest] = useState<string | null>(null); // Mobile touch selection
   const [saving, setSaving] = useState(false);
   const [autoAllocating, setAutoAllocating] = useState(false);
   const [allocationExplanations, setAllocationExplanations] = useState<Record<string, string>>({});
@@ -129,13 +130,28 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
     setDraggedGuest(guestId);
   };
 
+  // Mobile tap to select guest
+  const handleGuestSelect = (guestId: string) => {
+    setSelectedGuest((prev) => (prev === guestId ? null : guestId));
+  };
+
   const handleDrop = (floor: string, wing: string) => {
+    // Desktop drag-drop
     if (draggedGuest) {
       setAllocations((prev) => ({
         ...prev,
         [draggedGuest]: { floor, wing },
       }));
       setDraggedGuest(null);
+    }
+    // Mobile tap-to-allocate
+    if (selectedGuest && !allocations[selectedGuest]) {
+      setAllocations((prev) => ({
+        ...prev,
+        [selectedGuest]: { floor, wing },
+      }));
+      setSelectedGuest(null);
+      showToast("Guest allocated");
     }
   };
 
@@ -242,20 +258,33 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
                 Unallocated Guests ({unallocatedGuests.length})
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-3 space-y-2 max-h-[600px] overflow-y-auto">
+            <CardContent className="p-3 space-y-2 max-h-[600px] sm:max-h-[600px] max-h-[40vh] overflow-y-auto">
+              {selectedGuest && (
+                <div className="p-2 mb-2 bg-[#ff6b35]/10 border border-[#ff6b35]/30 rounded-lg text-xs text-[#ff6b35] dark:text-orange-400 lg:hidden">
+                  <span className="font-medium">Tap a floor/wing below to allocate the selected guest</span>
+                </div>
+              )}
               {unallocatedGuests.map((guest) => (
                 <div
                   key={guest.id}
                   draggable
+                  role="listitem"
+                  tabIndex={0}
+                  aria-selected={selectedGuest === guest.id}
                   onDragStart={() => handleDragStart(guest.id)}
-                  className={`p-2.5 rounded-xl border cursor-grab active:cursor-grabbing transition-all hover:shadow-md hover:scale-[1.02] ${getGroupStyle(guest.group)}`}
+                  onClick={() => handleGuestSelect(guest.id)}
+                  onKeyDown={(e) => e.key === "Enter" && handleGuestSelect(guest.id)}
+                  className={`p-2.5 rounded-xl border cursor-grab active:cursor-grabbing transition-all hover:shadow-md hover:scale-[1.02] touch-manipulation ${getGroupStyle(guest.group)} ${selectedGuest === guest.id ? "ring-2 ring-[#ff6b35] ring-offset-1 dark:ring-offset-zinc-900 scale-[1.02]" : ""}`}
                 >
                   <div className="flex items-center gap-2">
-                    <GripVertical className="h-3 w-3 opacity-40" />
+                    <GripVertical className="h-3 w-3 opacity-40 hidden sm:block" />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold truncate">{guest.name}</p>
                       <p className="text-[10px] opacity-60">{guest.group || "No group"}</p>
                     </div>
+                    {selectedGuest === guest.id && (
+                      <span className="text-[10px] font-medium text-[#ff6b35] dark:text-orange-400 lg:hidden">Selected</span>
+                    )}
                   </div>
                   {guest.proximityRequest && (
                     <p className="text-[10px] mt-1.5 flex items-center gap-1 opacity-70 bg-white/50 dark:bg-zinc-900/50 rounded px-1.5 py-0.5">
@@ -281,11 +310,16 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
           {floorWings.map((fw) => (
             <Card
               key={`${fw.floor}-${fw.wing}`}
-              className={`border-0 shadow-sm transition-all ${
-                draggedGuest ? "ring-2 ring-[#ff6b35] ring-offset-2 dark:ring-offset-zinc-900 bg-orange-50/30 dark:bg-orange-950/20" : ""
+              className={`border-0 shadow-sm transition-all cursor-pointer ${
+                draggedGuest || selectedGuest ? "ring-2 ring-[#ff6b35] ring-offset-2 dark:ring-offset-zinc-900 bg-orange-50/30 dark:bg-orange-950/20" : ""
               }`}
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => handleDrop(fw.floor, fw.wing)}
+              onClick={() => handleDrop(fw.floor, fw.wing)}
+              role="button"
+              tabIndex={0}
+              aria-label={`Allocate to Floor ${fw.floor}, ${fw.wing} Wing`}
+              onKeyDown={(e) => e.key === "Enter" && handleDrop(fw.floor, fw.wing)}
             >
               <CardHeader className="bg-gradient-to-br from-slate-50 to-gray-50 dark:from-zinc-800 dark:to-zinc-800 border-b border-gray-100 dark:border-zinc-700 pb-3">
                 <CardTitle className="text-sm font-semibold dark:text-zinc-100 flex items-center justify-between">

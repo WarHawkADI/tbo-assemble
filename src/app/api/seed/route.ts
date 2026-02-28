@@ -11,6 +11,10 @@ export async function POST() {
     console.log("🌱 Seeding TBO Assemble database...\n");
 
     // Clean existing data (order matters for foreign keys)
+    await prisma.roomOccupant.deleteMany();
+    await prisma.scheduleItem.deleteMany();
+    await prisma.rFP.deleteMany();
+    await prisma.vendor.deleteMany();
     await prisma.bookingAddOn.deleteMany();
     await prisma.nudge.deleteMany();
     await prisma.feedback.deleteMany();
@@ -50,6 +54,7 @@ export async function POST() {
         primaryColor: "#8B1A4A",
         secondaryColor: "#FFF5F5",
         accentColor: "#D4A574",
+        expectedPax: 150,
         agentId: agent.id,
         status: "active",
       },
@@ -261,6 +266,7 @@ export async function POST() {
         primaryColor: "#1e40af",
         secondaryColor: "#eff6ff",
         accentColor: "#3b82f6",
+        expectedPax: 200,
         agentId: agent.id,
         status: "active",
       },
@@ -335,6 +341,7 @@ export async function POST() {
         primaryColor: "#0e7490",
         secondaryColor: "#ecfeff",
         accentColor: "#06b6d4",
+        expectedPax: 80,
         agentId: agent.id,
         status: "active",
       },
@@ -423,6 +430,7 @@ export async function POST() {
         primaryColor: "#7c3aed",
         secondaryColor: "#f5f3ff",
         accentColor: "#a78bfa",
+        expectedPax: 120,
         agentId: agent.id,
         status: "active",
       },
@@ -509,6 +517,7 @@ export async function POST() {
         primaryColor: "#059669",
         secondaryColor: "#ecfdf5",
         accentColor: "#34d399",
+        expectedPax: 200,
         agentId: agent.id,
         status: "draft",
       },
@@ -589,6 +598,7 @@ export async function POST() {
         primaryColor: "#dc2626",
         secondaryColor: "#fef2f2",
         accentColor: "#f87171",
+        expectedPax: 80,
         agentId: agent.id,
         status: "active",
       },
@@ -672,6 +682,7 @@ export async function POST() {
         primaryColor: "#0f172a",
         secondaryColor: "#f8fafc",
         accentColor: "#38bdf8",
+        expectedPax: 100,
         agentId: agent.id,
         status: "active",
       },
@@ -893,6 +904,872 @@ export async function POST() {
         ...(goaInvited[1] ? [{ guestId: goaInvited[1].id, channel: 'sms', message: 'Reminder: Beach-side rooms for the Goa wedding are going fast. Reserve yours!', status: 'sent' }] : []),
       ],
     });
+
+    // ═══════════════════════════════════════════════════════
+    // VENDORS & RFPs - Hotel/Venue quotes for comparison
+    // ═══════════════════════════════════════════════════════
+    console.log("📋 Creating Vendors and RFPs...");
+
+    // Create Vendors
+    const grandHyatt = await prisma.vendor.create({
+      data: {
+        name: "The Grand Hyatt Resort & Spa",
+        email: "events@grandhyattudaipur.com",
+        phone: "+91 294 266 1234",
+        contactPerson: "Mr. Vikram Singh",
+        address: "Udaipur, Rajasthan",
+        notes: "Premium heritage property, excellent for destination weddings",
+      },
+    });
+
+    const tajLakePalace = await prisma.vendor.create({
+      data: {
+        name: "Taj Lake Palace",
+        email: "reservations@tajhotels.com",
+        phone: "+91 294 242 8800",
+        contactPerson: "Ms. Anjali Sharma",
+        address: "Lake Pichola, Udaipur",
+        notes: "Iconic floating palace, ultra-luxury segment",
+      },
+    });
+
+    const oberoi = await prisma.vendor.create({
+      data: {
+        name: "The Oberoi Udaivilas",
+        email: "events@oberoihotels.com",
+        phone: "+91 294 243 3300",
+        contactPerson: "Mr. Raghav Mehta",
+        address: "Haridasji Ki Magri, Udaipur",
+        notes: "Award-winning luxury resort with lake views",
+      },
+    });
+
+    const jwMarriott = await prisma.vendor.create({
+      data: {
+        name: "JW Marriott Convention Centre",
+        email: "events@jwmarriottmumbai.com",
+        phone: "+91 22 6882 8888",
+        contactPerson: "Ms. Priya Nair",
+        address: "Juhu, Mumbai",
+        notes: "Premier MICE venue with extensive convention facilities",
+      },
+    });
+
+    const hyattRegency = await prisma.vendor.create({
+      data: {
+        name: "Hyatt Regency Mumbai",
+        email: "events@hyattmumbai.com",
+        phone: "+91 22 6696 1234",
+        contactPerson: "Mr. Ashish Kumar",
+        address: "Sahar Airport Road, Mumbai",
+        notes: "Modern business hotel near airport",
+      },
+    });
+
+    const tajExotica = await prisma.vendor.create({
+      data: {
+        name: "Taj Exotica Resort & Spa",
+        email: "reservations.goa@tajhotels.com",
+        phone: "+91 832 668 3333",
+        contactPerson: "Mr. Santosh Naik",
+        address: "Benaulim, South Goa",
+        notes: "Beachfront luxury resort, ideal for destination weddings",
+      },
+    });
+
+    const wHotelGoa = await prisma.vendor.create({
+      data: {
+        name: "W Goa",
+        email: "events@wgoa.com",
+        phone: "+91 832 671 8888",
+        contactPerson: "Ms. Rina D'Souza",
+        address: "Vagator Beach, North Goa",
+        notes: "Contemporary luxury with stunning sea views",
+      },
+    });
+
+    const itcRajputana = await prisma.vendor.create({
+      data: {
+        name: "ITC Rajputana",
+        email: "reservations@itcrajputana.com",
+        phone: "+91 141 510 0100",
+        contactPerson: "Mr. Devendra Singh",
+        address: "Palace Road, Jaipur",
+        notes: "Heritage luxury hotel with Rajasthani architecture",
+      },
+    });
+
+    const rambagh = await prisma.vendor.create({
+      data: {
+        name: "Rambagh Palace",
+        email: "rambagh@tajhotels.com",
+        phone: "+91 141 221 1919",
+        contactPerson: "Ms. Kavita Rathore",
+        address: "Bhawani Singh Road, Jaipur",
+        notes: "Former royal residence, ultra-luxury palace hotel",
+      },
+    });
+
+    // Vendors for PharmaVision Conference
+    const novotelHICC = await prisma.vendor.create({
+      data: {
+        name: "Novotel Hyderabad Convention Centre",
+        email: "events@novotelhicc.com",
+        phone: "+91 40 6682 4422",
+        contactPerson: "Mr. Krishna Rao",
+        address: "HITEC City, Hyderabad",
+        notes: "Connected to HICC, India's largest convention center",
+      },
+    });
+
+    const hyattHyderabad = await prisma.vendor.create({
+      data: {
+        name: "Park Hyatt Hyderabad",
+        email: "events@parkhyatthyderabad.com",
+        phone: "+91 40 4949 1234",
+        contactPerson: "Ms. Lakshmi Menon",
+        address: "Banjara Hills, Hyderabad",
+        notes: "Luxury hotel with excellent meeting facilities",
+      },
+    });
+
+    // Vendors for IIT Reunion
+    const wildflowerHall = await prisma.vendor.create({
+      data: {
+        name: "Wildflower Hall, An Oberoi Resort",
+        email: "reservations@oberoihotels.com",
+        phone: "+91 177 264 8585",
+        contactPerson: "Mr. Rajat Verma",
+        address: "Chharabra, Shimla",
+        notes: "Former residence of Lord Kitchener, heritage luxury in Himalayas",
+      },
+    });
+
+    const anandaSpa = await prisma.vendor.create({
+      data: {
+        name: "Ananda in the Himalayas",
+        email: "reservations@anandaspa.com",
+        phone: "+91 1378 227 500",
+        contactPerson: "Ms. Priya Kapoor",
+        address: "Narendra Nagar, Uttarakhand",
+        notes: "Award-winning wellness resort with Himalayan views",
+      },
+    });
+
+    // Vendors for NovaByte Product Launch
+    const leelaPalace = await prisma.vendor.create({
+      data: {
+        name: "The Leela Palace Bengaluru",
+        email: "events@theleela.com",
+        phone: "+91 80 2521 1234",
+        contactPerson: "Mr. Arun Nair",
+        address: "Old Airport Road, Bengaluru",
+        notes: "Premier luxury hotel, excellent for corporate events",
+      },
+    });
+
+    const tajWestEnd = await prisma.vendor.create({
+      data: {
+        name: "Taj West End Bengaluru",
+        email: "westend.bangalore@tajhotels.com",
+        phone: "+91 80 6660 5660",
+        contactPerson: "Ms. Anita Sharma",
+        address: "Race Course Road, Bengaluru",
+        notes: "Heritage property with 20 acres of gardens",
+      },
+    });
+
+    // Create RFPs for Wedding Event
+    await prisma.rFP.createMany({
+      data: [
+        {
+          eventId: wedding.id,
+          vendorId: grandHyatt.id,
+          quotedAmount: 4850000,
+          roomRate: 12000,
+          foodRate: 3500,
+          venueRate: 250000,
+          additionalCosts: 150000,
+          validUntil: new Date("2026-03-15"),
+          status: "accepted",
+          notes: "Includes complimentary mehendi venue, 20% discount on spa packages. Best value for money.",
+          responseDate: new Date("2026-01-20"),
+        },
+        {
+          eventId: wedding.id,
+          vendorId: tajLakePalace.id,
+          quotedAmount: 7200000,
+          roomRate: 45000,
+          foodRate: 5500,
+          venueRate: 400000,
+          additionalCosts: 200000,
+          validUntil: new Date("2026-03-10"),
+          status: "rejected",
+          notes: "Premium location but significantly over budget. Limited room availability.",
+          responseDate: new Date("2026-01-18"),
+        },
+        {
+          eventId: wedding.id,
+          vendorId: oberoi.id,
+          quotedAmount: 5800000,
+          roomRate: 22000,
+          foodRate: 4200,
+          venueRate: 350000,
+          additionalCosts: 180000,
+          validUntil: new Date("2026-03-20"),
+          status: "negotiating",
+          notes: "Excellent property. Negotiating to include boat transfers for all guests.",
+          responseDate: new Date("2026-01-22"),
+        },
+      ],
+    });
+
+    // Create RFPs for MICE Conference
+    await prisma.rFP.createMany({
+      data: [
+        {
+          eventId: conference.id,
+          vendorId: jwMarriott.id,
+          quotedAmount: 2850000,
+          roomRate: 8000,
+          foodRate: 2500,
+          venueRate: 180000,
+          additionalCosts: 120000,
+          validUntil: new Date("2026-04-20"),
+          status: "accepted",
+          notes: "State-of-art AV equipment included. Conference hall capacity 500 pax.",
+          responseDate: new Date("2026-02-10"),
+        },
+        {
+          eventId: conference.id,
+          vendorId: hyattRegency.id,
+          quotedAmount: 2450000,
+          roomRate: 7500,
+          foodRate: 2200,
+          venueRate: 150000,
+          additionalCosts: 100000,
+          validUntil: new Date("2026-04-15"),
+          status: "pending",
+          notes: "Competitive pricing. Conference room slightly smaller but proximity to airport is advantage.",
+          responseDate: null,
+        },
+      ],
+    });
+
+    // Create RFPs for Goa Wedding
+    await prisma.rFP.createMany({
+      data: [
+        {
+          eventId: goaWedding.id,
+          vendorId: tajExotica.id,
+          quotedAmount: 3600000,
+          roomRate: 14000,
+          foodRate: 3000,
+          venueRate: 200000,
+          additionalCosts: 100000,
+          validUntil: new Date("2026-02-15"),
+          status: "accepted",
+          notes: "Beachside mandap included. Complimentary sunset cruise for bride & groom families.",
+          responseDate: new Date("2025-12-20"),
+        },
+        {
+          eventId: goaWedding.id,
+          vendorId: wHotelGoa.id,
+          quotedAmount: 3950000,
+          roomRate: 16000,
+          foodRate: 3200,
+          venueRate: 220000,
+          additionalCosts: 130000,
+          validUntil: new Date("2026-02-10"),
+          status: "rejected",
+          notes: "Modern vibe doesn't match traditional wedding requirements.",
+          responseDate: new Date("2025-12-18"),
+        },
+      ],
+    });
+
+    // Create RFPs for Corporate Offsite
+    await prisma.rFP.createMany({
+      data: [
+        {
+          eventId: corpOffsite.id,
+          vendorId: itcRajputana.id,
+          quotedAmount: 2100000,
+          roomRate: 9500,
+          foodRate: 2800,
+          venueRate: 150000,
+          additionalCosts: 80000,
+          validUntil: new Date("2026-05-25"),
+          status: "accepted",
+          notes: "Corporate rates applied. Meeting rooms fully equipped. Rajasthani cultural dinner included.",
+          responseDate: new Date("2026-03-15"),
+        },
+        {
+          eventId: corpOffsite.id,
+          vendorId: rambagh.id,
+          quotedAmount: 3800000,
+          roomRate: 18000,
+          foodRate: 4500,
+          venueRate: 300000,
+          additionalCosts: 150000,
+          validUntil: new Date("2026-05-20"),
+          status: "rejected",
+          notes: "Exceptional property but exceeds budget by 80%. Keeping as option for CEO dinner.",
+          responseDate: new Date("2026-03-12"),
+        },
+      ],
+    });
+
+    // Create RFPs for PharmaVision Conference
+    await prisma.rFP.createMany({
+      data: [
+        {
+          eventId: pharmaConf.id,
+          vendorId: novotelHICC.id,
+          quotedAmount: 3200000,
+          roomRate: 7500,
+          foodRate: 2200,
+          venueRate: 180000,
+          additionalCosts: 100000,
+          validUntil: new Date("2026-07-15"),
+          status: "accepted",
+          notes: "Direct access to HICC convention halls. Includes exhibition space for sponsors. Medical-grade AV setup included.",
+          responseDate: new Date("2026-05-10"),
+        },
+        {
+          eventId: pharmaConf.id,
+          vendorId: hyattHyderabad.id,
+          quotedAmount: 3800000,
+          roomRate: 9000,
+          foodRate: 2800,
+          venueRate: 220000,
+          additionalCosts: 120000,
+          validUntil: new Date("2026-07-10"),
+          status: "negotiating",
+          notes: "Premium location at Banjara Hills. Better dining options. Negotiating for pharma industry discount.",
+          responseDate: new Date("2026-05-15"),
+        },
+      ],
+    });
+
+    // Create RFPs for IIT Reunion
+    await prisma.rFP.createMany({
+      data: [
+        {
+          eventId: reunion.id,
+          vendorId: wildflowerHall.id,
+          quotedAmount: 2400000,
+          roomRate: 18000,
+          foodRate: 3500,
+          venueRate: 120000,
+          additionalCosts: 80000,
+          validUntil: new Date("2026-09-20"),
+          status: "accepted",
+          notes: "Iconic heritage property. Includes bonfire setup, guided trek, and exclusive spa access for group.",
+          responseDate: new Date("2026-07-15"),
+        },
+        {
+          eventId: reunion.id,
+          vendorId: anandaSpa.id,
+          quotedAmount: 3100000,
+          roomRate: 28000,
+          foodRate: 4000,
+          venueRate: 100000,
+          additionalCosts: 120000,
+          validUntil: new Date("2026-09-15"),
+          status: "rejected",
+          notes: "Exceptional wellness resort but pricing too high for alumni group. Focus is on relaxation over activities.",
+          responseDate: new Date("2026-07-10"),
+        },
+      ],
+    });
+
+    // Create RFPs for NovaByte Product Launch
+    await prisma.rFP.createMany({
+      data: [
+        {
+          eventId: productLaunch.id,
+          vendorId: leelaPalace.id,
+          quotedAmount: 2800000,
+          roomRate: 16000,
+          foodRate: 3000,
+          venueRate: 200000,
+          additionalCosts: 100000,
+          validUntil: new Date("2026-08-15"),
+          status: "accepted",
+          notes: "State-of-art AV for product demos. Rooftop access for after-party. Tech-ready conference halls.",
+          responseDate: new Date("2026-06-20"),
+        },
+        {
+          eventId: productLaunch.id,
+          vendorId: tajWestEnd.id,
+          quotedAmount: 2500000,
+          roomRate: 14000,
+          foodRate: 2800,
+          venueRate: 180000,
+          additionalCosts: 90000,
+          validUntil: new Date("2026-08-10"),
+          status: "pending",
+          notes: "Heritage charm with modern amenities. Garden lawn available for networking event. Lower pricing but older tech setup.",
+          responseDate: null,
+        },
+      ],
+    });
+
+    // ═══════════════════════════════════════════════════════
+    // SCHEDULE ITEMS - Detailed event agendas
+    // ═══════════════════════════════════════════════════════
+    console.log("📅 Creating Event Schedules...");
+
+    // Sharma-Patel Wedding Schedule
+    await prisma.scheduleItem.createMany({
+      data: [
+        // Day 1 - April 10, 2026
+        { eventId: wedding.id, title: "Guest Arrival & Check-in", description: "Welcome drinks at lobby. Room assignments distributed.", date: new Date("2026-04-10"), startTime: "14:00", endTime: "17:00", venue: "Main Lobby", type: "transport", paxCount: 50, sortOrder: 1 },
+        { eventId: wedding.id, title: "Mehendi Ceremony", description: "Traditional henna application for bride and female guests. Live folk music.", date: new Date("2026-04-10"), startTime: "17:00", endTime: "20:00", venue: "Poolside Garden", type: "entertainment", cost: 75000, paxCount: 80, sortOrder: 2 },
+        { eventId: wedding.id, title: "Welcome Dinner", description: "Buffet dinner featuring Rajasthani and North Indian cuisine.", date: new Date("2026-04-10"), startTime: "20:30", endTime: "23:00", venue: "Grand Ballroom", type: "meal", cost: 120000, paxCount: 100, sortOrder: 3 },
+        // Day 2 - April 11, 2026
+        { eventId: wedding.id, title: "Breakfast", description: "Continental and Indian breakfast buffet.", date: new Date("2026-04-11"), startTime: "08:00", endTime: "10:30", venue: "Restaurant", type: "meal", cost: 40000, paxCount: 100, sortOrder: 4 },
+        { eventId: wedding.id, title: "Haldi Ceremony", description: "Traditional turmeric ceremony for bride and groom.", date: new Date("2026-04-11"), startTime: "11:00", endTime: "13:00", venue: "Lakeside Lawn", type: "entertainment", cost: 35000, paxCount: 60, sortOrder: 5 },
+        { eventId: wedding.id, title: "Lunch", description: "Multi-cuisine lunch with live counters.", date: new Date("2026-04-11"), startTime: "13:30", endTime: "15:00", venue: "Restaurant", type: "meal", cost: 60000, paxCount: 100, sortOrder: 6 },
+        { eventId: wedding.id, title: "Free Time / Spa", description: "Leisure time. Spa pre-booked for bridal party.", date: new Date("2026-04-11"), startTime: "15:00", endTime: "17:30", venue: "Various", type: "break", sortOrder: 7 },
+        { eventId: wedding.id, title: "Sangeet Night", description: "Choreographed performances, DJ, and cocktails. Dress code: Indo-Western.", date: new Date("2026-04-11"), startTime: "19:00", endTime: "24:00", venue: "Lakeview Terrace", type: "entertainment", cost: 250000, paxCount: 120, sortOrder: 8 },
+        // Day 3 - April 12, 2026 (Wedding Day)
+        { eventId: wedding.id, title: "Breakfast", description: "Light breakfast.", date: new Date("2026-04-12"), startTime: "07:30", endTime: "09:30", venue: "Restaurant", type: "meal", cost: 30000, paxCount: 100, sortOrder: 9 },
+        { eventId: wedding.id, title: "Baraat Procession", description: "Groom's procession with band and decorated vehicle.", date: new Date("2026-04-12"), startTime: "16:00", endTime: "17:30", venue: "Hotel Entrance to Mandap", type: "entertainment", cost: 80000, paxCount: 80, sortOrder: 10 },
+        { eventId: wedding.id, title: "Wedding Ceremony", description: "Traditional Hindu wedding ceremony with Vedic rituals.", date: new Date("2026-04-12"), startTime: "18:00", endTime: "21:00", venue: "Lakeside Mandap", type: "session", cost: 150000, paxCount: 150, sortOrder: 11 },
+        { eventId: wedding.id, title: "Reception & Grand Dinner", description: "Formal reception followed by 7-course dinner. Live band.", date: new Date("2026-04-12"), startTime: "21:30", endTime: "01:00", venue: "Grand Ballroom", type: "meal", cost: 350000, paxCount: 200, sortOrder: 12 },
+        // Day 4 - April 13, 2026
+        { eventId: wedding.id, title: "Farewell Brunch", description: "Farewell brunch before guest departures.", date: new Date("2026-04-13"), startTime: "10:00", endTime: "12:00", venue: "Garden Restaurant", type: "meal", cost: 45000, paxCount: 80, sortOrder: 13 },
+        { eventId: wedding.id, title: "Check-out & Departure", description: "Coordinated checkout and airport transfers.", date: new Date("2026-04-13"), startTime: "12:00", endTime: "15:00", venue: "Lobby", type: "transport", cost: 30000, paxCount: 100, sortOrder: 14 },
+      ],
+    });
+
+    // TechConnect Summit Schedule
+    await prisma.scheduleItem.createMany({
+      data: [
+        // Day 1 - May 15, 2026
+        { eventId: conference.id, title: "Registration & Networking Breakfast", description: "Badge collection, welcome kit distribution, and networking over breakfast.", date: new Date("2026-05-15"), startTime: "08:00", endTime: "09:30", venue: "Convention Centre Lobby", type: "networking", cost: 50000, paxCount: 200, sortOrder: 1 },
+        { eventId: conference.id, title: "Opening Keynote: Future of AI", description: "Keynote by Vikram Sundaram on emerging AI trends in enterprise.", date: new Date("2026-05-15"), startTime: "09:45", endTime: "10:45", venue: "Main Auditorium", type: "session", paxCount: 200, sortOrder: 2 },
+        { eventId: conference.id, title: "Coffee Break", description: "Refreshments and networking.", date: new Date("2026-05-15"), startTime: "10:45", endTime: "11:15", venue: "Foyer", type: "break", cost: 15000, paxCount: 200, sortOrder: 3 },
+        { eventId: conference.id, title: "Panel: Cloud Infrastructure at Scale", description: "Industry leaders discuss cloud architecture best practices.", date: new Date("2026-05-15"), startTime: "11:15", endTime: "12:30", venue: "Main Auditorium", type: "session", paxCount: 200, sortOrder: 4 },
+        { eventId: conference.id, title: "Networking Lunch", description: "Curated lunch with themed discussion tables.", date: new Date("2026-05-15"), startTime: "12:30", endTime: "14:00", venue: "Banquet Hall", type: "meal", cost: 180000, paxCount: 200, sortOrder: 5 },
+        { eventId: conference.id, title: "Track A: DevOps & SRE", description: "Deep dive sessions on DevOps practices.", date: new Date("2026-05-15"), startTime: "14:00", endTime: "16:00", venue: "Hall A", type: "session", paxCount: 80, sortOrder: 6 },
+        { eventId: conference.id, title: "Track B: Product Management", description: "Product strategy and roadmap sessions.", date: new Date("2026-05-15"), startTime: "14:00", endTime: "16:00", venue: "Hall B", type: "session", paxCount: 70, sortOrder: 7 },
+        { eventId: conference.id, title: "Track C: Startup Showcase", description: "Startup pitches and investor interactions.", date: new Date("2026-05-15"), startTime: "14:00", endTime: "16:00", venue: "Innovation Lab", type: "session", paxCount: 50, sortOrder: 8 },
+        { eventId: conference.id, title: "Evening Networking", description: "Cocktails with sponsor booths.", date: new Date("2026-05-15"), startTime: "18:00", endTime: "20:00", venue: "Rooftop Lounge", type: "networking", cost: 100000, paxCount: 150, sortOrder: 9 },
+        // Day 2 - May 16, 2026
+        { eventId: conference.id, title: "Breakfast", description: "Networking breakfast.", date: new Date("2026-05-16"), startTime: "08:00", endTime: "09:00", venue: "Restaurant", type: "meal", cost: 40000, paxCount: 200, sortOrder: 10 },
+        { eventId: conference.id, title: "Keynote: Data-Driven Decisions", description: "Nandini Rao on building data culture in organizations.", date: new Date("2026-05-16"), startTime: "09:15", endTime: "10:15", venue: "Main Auditorium", type: "session", paxCount: 200, sortOrder: 11 },
+        { eventId: conference.id, title: "Hands-on Workshop: Kubernetes", description: "Practical K8s workshop for intermediate users.", date: new Date("2026-05-16"), startTime: "10:30", endTime: "13:00", venue: "Workshop Room 1", type: "session", cost: 50000, paxCount: 40, sortOrder: 12 },
+        { eventId: conference.id, title: "Lunch", description: "Lunch break.", date: new Date("2026-05-16"), startTime: "13:00", endTime: "14:30", venue: "Banquet Hall", type: "meal", cost: 150000, paxCount: 200, sortOrder: 13 },
+        { eventId: conference.id, title: "Fireside Chat: Tech Leadership", description: "Candid conversation with CTOs from leading companies.", date: new Date("2026-05-16"), startTime: "14:30", endTime: "15:30", venue: "Main Auditorium", type: "session", paxCount: 200, sortOrder: 14 },
+        { eventId: conference.id, title: "Networking Dinner", description: "Formal dinner with awards ceremony.", date: new Date("2026-05-16"), startTime: "19:30", endTime: "22:30", venue: "Grand Ballroom", type: "meal", cost: 250000, paxCount: 180, sortOrder: 15 },
+        // Day 3 - May 17, 2026
+        { eventId: conference.id, title: "Breakfast", description: "Light breakfast.", date: new Date("2026-05-17"), startTime: "08:00", endTime: "09:00", venue: "Restaurant", type: "meal", cost: 35000, paxCount: 180, sortOrder: 16 },
+        { eventId: conference.id, title: "Closing Keynote: Innovation Roadmap", description: "Closing address and next steps for community.", date: new Date("2026-05-17"), startTime: "09:15", endTime: "10:15", venue: "Main Auditorium", type: "session", paxCount: 180, sortOrder: 17 },
+        { eventId: conference.id, title: "Closing & Departures", description: "Final networking and departures.", date: new Date("2026-05-17"), startTime: "10:30", endTime: "12:00", venue: "Lobby", type: "transport", paxCount: 180, sortOrder: 18 },
+      ],
+    });
+
+    // Goa Wedding Schedule
+    await prisma.scheduleItem.createMany({
+      data: [
+        // Day 1 - March 5, 2026
+        { eventId: goaWedding.id, title: "Arrival & Beach Welcome", description: "Welcome drinks with coconut water and Goan snacks at beachside.", date: new Date("2026-03-05"), startTime: "14:00", endTime: "16:00", venue: "Beach Deck", type: "transport", cost: 25000, paxCount: 60, sortOrder: 1 },
+        { eventId: goaWedding.id, title: "Pool Party", description: "Casual pool party with DJ and mocktails.", date: new Date("2026-03-05"), startTime: "16:30", endTime: "19:00", venue: "Infinity Pool", type: "entertainment", cost: 60000, paxCount: 50, sortOrder: 2 },
+        { eventId: goaWedding.id, title: "Beach BBQ Night", description: "BBQ dinner on the beach with live band.", date: new Date("2026-03-05"), startTime: "19:30", endTime: "23:00", venue: "Private Beach", type: "meal", cost: 150000, paxCount: 70, sortOrder: 3 },
+        // Day 2 - March 6, 2026
+        { eventId: goaWedding.id, title: "Breakfast by the Sea", description: "Breakfast with ocean views.", date: new Date("2026-03-06"), startTime: "08:00", endTime: "10:00", venue: "Beach Restaurant", type: "meal", cost: 35000, paxCount: 70, sortOrder: 4 },
+        { eventId: goaWedding.id, title: "Morning Yoga", description: "Optional sunrise yoga session.", date: new Date("2026-03-06"), startTime: "06:30", endTime: "07:30", venue: "Beach Lawn", type: "session", paxCount: 20, sortOrder: 5 },
+        { eventId: goaWedding.id, title: "Mehendi & Haldi", description: "Combined traditional ceremonies with Goan touches.", date: new Date("2026-03-06"), startTime: "11:00", endTime: "14:00", venue: "Garden Pavilion", type: "entertainment", cost: 80000, paxCount: 60, sortOrder: 6 },
+        { eventId: goaWedding.id, title: "Goan Lunch", description: "Authentic Goan seafood spread.", date: new Date("2026-03-06"), startTime: "14:30", endTime: "16:00", venue: "Restaurant", type: "meal", cost: 70000, paxCount: 70, sortOrder: 7 },
+        { eventId: goaWedding.id, title: "Sangeet Night", description: "Beachside sangeet with performances and DJ.", date: new Date("2026-03-06"), startTime: "19:00", endTime: "24:00", venue: "Beach Amphitheatre", type: "entertainment", cost: 200000, paxCount: 80, sortOrder: 8 },
+        // Day 3 - March 7, 2026 (Wedding Day)
+        { eventId: goaWedding.id, title: "Breakfast", description: "Light breakfast.", date: new Date("2026-03-07"), startTime: "08:00", endTime: "10:00", venue: "Restaurant", type: "meal", cost: 25000, paxCount: 70, sortOrder: 9 },
+        { eventId: goaWedding.id, title: "Sunset Beach Wedding", description: "Ceremony on the beach at golden hour.", date: new Date("2026-03-07"), startTime: "17:00", endTime: "19:00", venue: "Beachfront Mandap", type: "session", cost: 120000, paxCount: 100, sortOrder: 10 },
+        { eventId: goaWedding.id, title: "Reception Dinner", description: "Sit-down dinner under the stars.", date: new Date("2026-03-07"), startTime: "20:00", endTime: "01:00", venue: "Ocean Lawn", type: "meal", cost: 280000, paxCount: 120, sortOrder: 11 },
+        // Day 4 - March 8, 2026
+        { eventId: goaWedding.id, title: "Farewell Brunch", description: "Goodbye brunch with memories slideshow.", date: new Date("2026-03-08"), startTime: "10:00", endTime: "12:00", venue: "Restaurant", type: "meal", cost: 40000, paxCount: 60, sortOrder: 12 },
+        { eventId: goaWedding.id, title: "Departures", description: "Check-out and airport transfers.", date: new Date("2026-03-08"), startTime: "12:00", endTime: "16:00", venue: "Lobby", type: "transport", cost: 20000, paxCount: 70, sortOrder: 13 },
+      ],
+    });
+
+    // Corporate Offsite Schedule
+    await prisma.scheduleItem.createMany({
+      data: [
+        // Day 1 - June 20, 2026
+        { eventId: corpOffsite.id, title: "Arrival & Check-in", description: "Welcome with traditional Rajasthani welcome.", date: new Date("2026-06-20"), startTime: "13:00", endTime: "15:00", venue: "Lobby", type: "transport", paxCount: 120, sortOrder: 1 },
+        { eventId: corpOffsite.id, title: "Opening Session: Company Vision 2027", description: "CEO presents company direction and goals.", date: new Date("2026-06-20"), startTime: "15:30", endTime: "17:00", venue: "Convention Hall", type: "session", paxCount: 120, sortOrder: 2 },
+        { eventId: corpOffsite.id, title: "Break", description: "High tea and networking.", date: new Date("2026-06-20"), startTime: "17:00", endTime: "17:30", venue: "Foyer", type: "break", cost: 20000, paxCount: 120, sortOrder: 3 },
+        { eventId: corpOffsite.id, title: "Team Building: Game Night", description: "Interactive team games and challenges.", date: new Date("2026-06-20"), startTime: "17:30", endTime: "19:30", venue: "Garden", type: "entertainment", cost: 50000, paxCount: 120, sortOrder: 4 },
+        { eventId: corpOffsite.id, title: "Dinner at Nahargarh Fort", description: "Exclusive dinner at historic fort with cultural show.", date: new Date("2026-06-20"), startTime: "20:00", endTime: "23:00", venue: "Nahargarh Fort (Offsite)", type: "meal", cost: 180000, paxCount: 120, sortOrder: 5 },
+        // Day 2 - June 21, 2026
+        { eventId: corpOffsite.id, title: "Breakfast", description: "Buffet breakfast.", date: new Date("2026-06-21"), startTime: "07:30", endTime: "09:00", venue: "Restaurant", type: "meal", cost: 35000, paxCount: 120, sortOrder: 6 },
+        { eventId: corpOffsite.id, title: "Leadership Workshop", description: "Breaking silos: Cross-functional collaboration.", date: new Date("2026-06-21"), startTime: "09:30", endTime: "12:30", venue: "Convention Hall", type: "session", cost: 80000, paxCount: 120, sortOrder: 7 },
+        { eventId: corpOffsite.id, title: "Lunch", description: "Working lunch with table discussions.", date: new Date("2026-06-21"), startTime: "12:30", endTime: "14:00", venue: "Banquet Hall", type: "meal", cost: 60000, paxCount: 120, sortOrder: 8 },
+        { eventId: corpOffsite.id, title: "Department Breakouts", description: "Team-specific planning sessions.", date: new Date("2026-06-21"), startTime: "14:00", endTime: "17:00", venue: "Various Meeting Rooms", type: "session", paxCount: 120, sortOrder: 9 },
+        { eventId: corpOffsite.id, title: "Free Time / City Exploration", description: "Optional heritage walking tour available.", date: new Date("2026-06-21"), startTime: "17:00", endTime: "19:30", venue: "City", type: "break", cost: 40000, paxCount: 60, sortOrder: 10 },
+        { eventId: corpOffsite.id, title: "Rajasthani Cultural Night", description: "Traditional dance, music, and dinner.", date: new Date("2026-06-21"), startTime: "20:00", endTime: "23:00", venue: "Courtyard", type: "entertainment", cost: 120000, paxCount: 120, sortOrder: 11 },
+        // Day 3 - June 22, 2026
+        { eventId: corpOffsite.id, title: "Breakfast", description: "Breakfast.", date: new Date("2026-06-22"), startTime: "08:00", endTime: "09:30", venue: "Restaurant", type: "meal", cost: 35000, paxCount: 120, sortOrder: 12 },
+        { eventId: corpOffsite.id, title: "Closing Session: Action Plans", description: "Commitments and next steps.", date: new Date("2026-06-22"), startTime: "10:00", endTime: "12:00", venue: "Convention Hall", type: "session", paxCount: 120, sortOrder: 13 },
+        { eventId: corpOffsite.id, title: "Awards & Recognition", description: "Annual awards ceremony.", date: new Date("2026-06-22"), startTime: "12:00", endTime: "13:00", venue: "Convention Hall", type: "session", paxCount: 120, sortOrder: 14 },
+        { eventId: corpOffsite.id, title: "Farewell Lunch", description: "Closing lunch.", date: new Date("2026-06-22"), startTime: "13:00", endTime: "14:30", venue: "Restaurant", type: "meal", cost: 50000, paxCount: 120, sortOrder: 15 },
+        { eventId: corpOffsite.id, title: "Departures", description: "Check-out and airport transfers.", date: new Date("2026-06-22"), startTime: "14:30", endTime: "18:00", venue: "Lobby", type: "transport", cost: 25000, paxCount: 120, sortOrder: 16 },
+      ],
+    });
+
+    // PharmaVision India 2026 Schedule
+    await prisma.scheduleItem.createMany({
+      data: [
+        // Day 1 - August 8, 2026
+        { eventId: pharmaConf.id, title: "Registration & Welcome Kit", description: "Delegate registration, badge collection, conference materials.", date: new Date("2026-08-08"), startTime: "08:00", endTime: "09:30", venue: "HICC Foyer", type: "networking", cost: 40000, paxCount: 200, sortOrder: 1 },
+        { eventId: pharmaConf.id, title: "Inaugural Ceremony", description: "Lamp lighting, welcome address by Dr. Anjali Deshpande.", date: new Date("2026-08-08"), startTime: "09:45", endTime: "10:30", venue: "Main Auditorium", type: "session", paxCount: 200, sortOrder: 2 },
+        { eventId: pharmaConf.id, title: "Keynote: Future of Drug Discovery", description: "Dr. Raghav Menon on AI-powered pharmaceutical research.", date: new Date("2026-08-08"), startTime: "10:30", endTime: "11:30", venue: "Main Auditorium", type: "session", paxCount: 200, sortOrder: 3 },
+        { eventId: pharmaConf.id, title: "Tea Break & Sponsor Exhibits", description: "Visit sponsor booths, networking.", date: new Date("2026-08-08"), startTime: "11:30", endTime: "12:00", venue: "Exhibition Hall", type: "break", cost: 25000, paxCount: 200, sortOrder: 4 },
+        { eventId: pharmaConf.id, title: "Panel: Regulatory Landscape 2026", description: "CDSCO, FDA experts discuss evolving compliance.", date: new Date("2026-08-08"), startTime: "12:00", endTime: "13:30", venue: "Main Auditorium", type: "session", paxCount: 200, sortOrder: 5 },
+        { eventId: pharmaConf.id, title: "Networking Lunch", description: "Multi-cuisine lunch with themed networking tables.", date: new Date("2026-08-08"), startTime: "13:30", endTime: "15:00", venue: "Banquet Hall", type: "meal", cost: 180000, paxCount: 200, sortOrder: 6 },
+        { eventId: pharmaConf.id, title: "Track A: Biologics & Biosimilars", description: "Deep dive into biologic drug development.", date: new Date("2026-08-08"), startTime: "15:00", endTime: "17:00", venue: "Hall A", type: "session", paxCount: 80, sortOrder: 7 },
+        { eventId: pharmaConf.id, title: "Track B: Clinical Trials Innovation", description: "Decentralized trials and digital endpoints.", date: new Date("2026-08-08"), startTime: "15:00", endTime: "17:00", venue: "Hall B", type: "session", paxCount: 70, sortOrder: 8 },
+        { eventId: pharmaConf.id, title: "Track C: Pharma Manufacturing 4.0", description: "Smart factories and supply chain resilience.", date: new Date("2026-08-08"), startTime: "15:00", endTime: "17:00", venue: "Hall C", type: "session", paxCount: 50, sortOrder: 9 },
+        { eventId: pharmaConf.id, title: "Evening Networking Reception", description: "Cocktails with industry leaders.", date: new Date("2026-08-08"), startTime: "18:00", endTime: "20:00", venue: "Poolside", type: "networking", cost: 80000, paxCount: 150, sortOrder: 10 },
+        // Day 2 - August 9, 2026
+        { eventId: pharmaConf.id, title: "Breakfast", description: "Networking breakfast.", date: new Date("2026-08-09"), startTime: "08:00", endTime: "09:00", venue: "Restaurant", type: "meal", cost: 40000, paxCount: 200, sortOrder: 11 },
+        { eventId: pharmaConf.id, title: "Keynote: Precision Medicine", description: "Genomics-driven personalized therapeutics.", date: new Date("2026-08-09"), startTime: "09:15", endTime: "10:15", venue: "Main Auditorium", type: "session", paxCount: 200, sortOrder: 12 },
+        { eventId: pharmaConf.id, title: "Workshop: AI in Drug Discovery", description: "Hands-on session with ML models for molecule design.", date: new Date("2026-08-09"), startTime: "10:30", endTime: "13:00", venue: "Workshop Room", type: "session", cost: 75000, paxCount: 40, sortOrder: 13 },
+        { eventId: pharmaConf.id, title: "Lunch", description: "Lunch break.", date: new Date("2026-08-09"), startTime: "13:00", endTime: "14:30", venue: "Banquet Hall", type: "meal", cost: 150000, paxCount: 200, sortOrder: 14 },
+        { eventId: pharmaConf.id, title: "Startup Showcase: Pharma Innovation", description: "10 biotech startups pitch their solutions.", date: new Date("2026-08-09"), startTime: "14:30", endTime: "16:30", venue: "Innovation Stage", type: "session", paxCount: 150, sortOrder: 15 },
+        { eventId: pharmaConf.id, title: "Gala Dinner at Falaknuma Palace", description: "Black-tie dinner at the Nizam's palace.", date: new Date("2026-08-09"), startTime: "19:30", endTime: "23:00", venue: "Falaknuma Palace (Offsite)", type: "meal", cost: 400000, paxCount: 180, sortOrder: 16 },
+        // Day 3 - August 10, 2026
+        { eventId: pharmaConf.id, title: "Breakfast", description: "Light breakfast.", date: new Date("2026-08-10"), startTime: "08:00", endTime: "09:00", venue: "Restaurant", type: "meal", cost: 35000, paxCount: 180, sortOrder: 17 },
+        { eventId: pharmaConf.id, title: "Fireside Chat: Industry Leaders", description: "CEOs share insights on pharma's future.", date: new Date("2026-08-10"), startTime: "09:15", endTime: "10:15", venue: "Main Auditorium", type: "session", paxCount: 180, sortOrder: 18 },
+        { eventId: pharmaConf.id, title: "Closing Keynote & Awards", description: "Best paper awards, closing remarks.", date: new Date("2026-08-10"), startTime: "10:30", endTime: "12:00", venue: "Main Auditorium", type: "session", paxCount: 180, sortOrder: 19 },
+        { eventId: pharmaConf.id, title: "Farewell Lunch & Departures", description: "Final networking and departures.", date: new Date("2026-08-10"), startTime: "12:00", endTime: "14:00", venue: "Banquet Hall", type: "meal", cost: 60000, paxCount: 180, sortOrder: 20 },
+      ],
+    });
+
+    // IIT Delhi Reunion Schedule
+    await prisma.scheduleItem.createMany({
+      data: [
+        // Day 1 - October 15, 2026
+        { eventId: reunion.id, title: "Arrival at Wildflower Hall", description: "Welcome drinks with hot beverages. Room assignments.", date: new Date("2026-10-15"), startTime: "14:00", endTime: "16:00", venue: "Main Lobby", type: "transport", paxCount: 40, sortOrder: 1 },
+        { eventId: reunion.id, title: "Opening Session: 10 Years Later", description: "Icebreaker games, memory lane presentations.", date: new Date("2026-10-15"), startTime: "16:30", endTime: "18:00", venue: "Drawing Room", type: "session", paxCount: 40, sortOrder: 2 },
+        { eventId: reunion.id, title: "High Tea with Mountain Views", description: "Traditional Himachali snacks overlooking Shimla.", date: new Date("2026-10-15"), startTime: "18:00", endTime: "19:00", venue: "Terrace", type: "meal", cost: 20000, paxCount: 40, sortOrder: 3 },
+        { eventId: reunion.id, title: "Bonfire & Karaoke Night", description: "Outdoor bonfire with old college songs, hot chocolate.", date: new Date("2026-10-15"), startTime: "20:00", endTime: "23:30", venue: "Garden Bonfire Area", type: "entertainment", cost: 35000, paxCount: 40, sortOrder: 4 },
+        // Day 2 - October 16, 2026
+        { eventId: reunion.id, title: "Sunrise Yoga (Optional)", description: "Mountain yoga with certified instructor.", date: new Date("2026-10-16"), startTime: "06:00", endTime: "07:00", venue: "Lawn", type: "session", paxCount: 15, sortOrder: 5 },
+        { eventId: reunion.id, title: "Breakfast", description: "Hearty mountain breakfast.", date: new Date("2026-10-16"), startTime: "08:00", endTime: "09:30", venue: "Restaurant", type: "meal", cost: 30000, paxCount: 40, sortOrder: 6 },
+        { eventId: reunion.id, title: "Himalayan Trek: Lord Kitchener's Trail", description: "Guided 4km trek through cedar forests.", date: new Date("2026-10-16"), startTime: "10:00", endTime: "13:30", venue: "Resort Trails", type: "entertainment", cost: 25000, paxCount: 35, sortOrder: 7 },
+        { eventId: reunion.id, title: "Picnic Lunch", description: "Packed lunch at scenic viewpoint.", date: new Date("2026-10-16"), startTime: "13:30", endTime: "14:30", venue: "Mahasu Peak", type: "meal", cost: 25000, paxCount: 35, sortOrder: 8 },
+        { eventId: reunion.id, title: "Free Time / Spa", description: "Relaxation, Oberoi spa treatments available.", date: new Date("2026-10-16"), startTime: "15:00", endTime: "18:00", venue: "Various", type: "break", sortOrder: 9 },
+        { eventId: reunion.id, title: "Batch Presentations Night", description: "Each department shares their journey since 2016.", date: new Date("2026-10-16"), startTime: "18:30", endTime: "20:00", venue: "Drawing Room", type: "session", paxCount: 40, sortOrder: 10 },
+        { eventId: reunion.id, title: "Grand Reunion Dinner", description: "Sit-down dinner with awards: 'Most Changed', 'Same Old', etc.", date: new Date("2026-10-16"), startTime: "20:00", endTime: "23:00", venue: "Private Dining Room", type: "meal", cost: 80000, paxCount: 40, sortOrder: 11 },
+        // Day 3 - October 17, 2026
+        { eventId: reunion.id, title: "Breakfast", description: "Leisurely breakfast.", date: new Date("2026-10-17"), startTime: "08:30", endTime: "10:00", venue: "Restaurant", type: "meal", cost: 30000, paxCount: 40, sortOrder: 12 },
+        { eventId: reunion.id, title: "Shimla Heritage Walk", description: "Guided tour of Mall Road, Christ Church, Vice Regal Lodge.", date: new Date("2026-10-17"), startTime: "10:30", endTime: "14:00", venue: "Shimla Town", type: "entertainment", cost: 20000, paxCount: 30, sortOrder: 13 },
+        { eventId: reunion.id, title: "Lunch in Shimla", description: "Lunch at Indian Coffee House (historic IIT hangout).", date: new Date("2026-10-17"), startTime: "14:00", endTime: "15:30", venue: "Mall Road, Shimla", type: "meal", cost: 15000, paxCount: 30, sortOrder: 14 },
+        { eventId: reunion.id, title: "Free Evening / Private Wine Tasting", description: "Optional wine tasting session at resort.", date: new Date("2026-10-17"), startTime: "17:00", endTime: "19:00", venue: "Wine Cellar", type: "entertainment", cost: 35000, paxCount: 20, sortOrder: 15 },
+        { eventId: reunion.id, title: "Farewell Dinner", description: "Final dinner with slideshow of reunion memories.", date: new Date("2026-10-17"), startTime: "20:00", endTime: "22:30", venue: "Restaurant", type: "meal", cost: 50000, paxCount: 40, sortOrder: 16 },
+        // Day 4 - October 18, 2026
+        { eventId: reunion.id, title: "Check-out Brunch", description: "Goodbye brunch before departures.", date: new Date("2026-10-18"), startTime: "09:00", endTime: "11:00", venue: "Restaurant", type: "meal", cost: 25000, paxCount: 40, sortOrder: 17 },
+        { eventId: reunion.id, title: "Departures", description: "Coordinated airport transfers to Chandigarh/Delhi.", date: new Date("2026-10-18"), startTime: "11:00", endTime: "15:00", venue: "Lobby", type: "transport", cost: 40000, paxCount: 40, sortOrder: 18 },
+      ],
+    });
+
+    // NovaByte AI Product Launch Schedule
+    await prisma.scheduleItem.createMany({
+      data: [
+        // Day 1 - September 10, 2026
+        { eventId: productLaunch.id, title: "VIP Arrivals & Check-in", description: "Red carpet welcome for investors, partners, and media.", date: new Date("2026-09-10"), startTime: "12:00", endTime: "14:00", venue: "Hotel Lobby", type: "transport", paxCount: 80, sortOrder: 1 },
+        { eventId: productLaunch.id, title: "Partners & Media Briefing", description: "Confidential preview of product features.", date: new Date("2026-09-10"), startTime: "14:30", endTime: "16:00", venue: "Boardroom", type: "session", paxCount: 30, sortOrder: 2 },
+        { eventId: productLaunch.id, title: "Product Demo: AI Platform Walkthrough", description: "Live demo of NovaByte's next-gen AI capabilities.", date: new Date("2026-09-10"), startTime: "16:30", endTime: "18:00", venue: "Innovation Lab", type: "session", cost: 50000, paxCount: 80, sortOrder: 3 },
+        { eventId: productLaunch.id, title: "Sunset Networking Reception", description: "Cocktails with rooftop city views.", date: new Date("2026-09-10"), startTime: "18:30", endTime: "20:00", venue: "Rooftop Lounge", type: "networking", cost: 100000, paxCount: 80, sortOrder: 4 },
+        { eventId: productLaunch.id, title: "Investor Dinner", description: "Private dinner for Sequoia, Accel, Lightspeed partners.", date: new Date("2026-09-10"), startTime: "20:30", endTime: "23:00", venue: "Private Dining Room", type: "meal", cost: 150000, paxCount: 20, sortOrder: 5 },
+        // Day 2 - September 11, 2026 (Launch Day)
+        { eventId: productLaunch.id, title: "Breakfast", description: "Networking breakfast.", date: new Date("2026-09-11"), startTime: "08:00", endTime: "09:00", venue: "Restaurant", type: "meal", cost: 35000, paxCount: 100, sortOrder: 6 },
+        { eventId: productLaunch.id, title: "Media Registration", description: "Press kit distribution, interview scheduling.", date: new Date("2026-09-11"), startTime: "09:00", endTime: "09:45", venue: "Convention Foyer", type: "networking", paxCount: 50, sortOrder: 7 },
+        { eventId: productLaunch.id, title: "Main Launch Event", description: "CEO keynote, product unveiling, live AI demonstrations.", date: new Date("2026-09-11"), startTime: "10:00", endTime: "12:30", venue: "Grand Ballroom", type: "session", cost: 200000, paxCount: 150, sortOrder: 8 },
+        { eventId: productLaunch.id, title: "Q&A with Leadership", description: "Press and analyst questions.", date: new Date("2026-09-11"), startTime: "12:30", endTime: "13:15", venue: "Grand Ballroom", type: "session", paxCount: 150, sortOrder: 9 },
+        { eventId: productLaunch.id, title: "VIP Lunch", description: "Curated lunch with enterprise clients.", date: new Date("2026-09-11"), startTime: "13:30", endTime: "15:00", venue: "Pavilion", type: "meal", cost: 120000, paxCount: 80, sortOrder: 10 },
+        { eventId: productLaunch.id, title: "Partner Workshops", description: "Deep-dive integration sessions with AWS, Google, Azure.", date: new Date("2026-09-11"), startTime: "15:00", endTime: "17:30", venue: "Meeting Rooms", type: "session", cost: 40000, paxCount: 60, sortOrder: 11 },
+        { eventId: productLaunch.id, title: "One-on-One Media Interviews", description: "Scheduled interviews with tech journalists.", date: new Date("2026-09-11"), startTime: "15:00", endTime: "17:00", venue: "Media Room", type: "session", paxCount: 20, sortOrder: 12 },
+        { eventId: productLaunch.id, title: "VIP After-Party", description: "Exclusive party with live DJ, molecular cocktails.", date: new Date("2026-09-11"), startTime: "20:00", endTime: "01:00", venue: "Rooftop & Pool", type: "entertainment", cost: 250000, paxCount: 100, sortOrder: 13 },
+        // Day 3 - September 12, 2026
+        { eventId: productLaunch.id, title: "Checkout Breakfast", description: "Light breakfast before departures.", date: new Date("2026-09-12"), startTime: "08:00", endTime: "10:00", venue: "Restaurant", type: "meal", cost: 25000, paxCount: 80, sortOrder: 14 },
+        { eventId: productLaunch.id, title: "Airport Transfers", description: "Luxury airport transfers for VIP guests.", date: new Date("2026-09-12"), startTime: "10:00", endTime: "14:00", venue: "Lobby", type: "transport", cost: 50000, paxCount: 60, sortOrder: 15 },
+      ],
+    });
+
+    // ═══════════════════════════════════════════════════════
+    // ROOM OCCUPANTS - Multiple guests per room
+    // ═══════════════════════════════════════════════════════
+    console.log("🛏️ Creating Room Occupants...");
+
+    // Get bookings with guests for the wedding
+    const weddingBookingsWithGuests = await prisma.booking.findMany({
+      where: { eventId: wedding.id },
+      include: { guest: true },
+      take: 8,
+    });
+
+    // Get some other guests from the wedding to add as room occupants
+    const weddingOtherGuests = await prisma.guest.findMany({
+      where: { 
+        eventId: wedding.id,
+        id: { notIn: weddingBookingsWithGuests.map(b => b.guestId) },
+      },
+      take: 6,
+    });
+
+    // Add room occupants (couples/families sharing rooms)
+    if (weddingBookingsWithGuests.length > 0 && weddingOtherGuests.length > 0) {
+      const occupantData = [];
+      
+      // First booking - primary guest
+      if (weddingBookingsWithGuests[0]) {
+        occupantData.push({
+          bookingId: weddingBookingsWithGuests[0].id,
+          guestId: weddingBookingsWithGuests[0].guestId,
+          isPrimary: true,
+        });
+        // Add spouse as secondary occupant
+        if (weddingOtherGuests[0]) {
+          occupantData.push({
+            bookingId: weddingBookingsWithGuests[0].id,
+            guestId: weddingOtherGuests[0].id,
+            isPrimary: false,
+          });
+        }
+      }
+
+      // Second booking - couple
+      if (weddingBookingsWithGuests[1]) {
+        occupantData.push({
+          bookingId: weddingBookingsWithGuests[1].id,
+          guestId: weddingBookingsWithGuests[1].guestId,
+          isPrimary: true,
+        });
+        if (weddingOtherGuests[1]) {
+          occupantData.push({
+            bookingId: weddingBookingsWithGuests[1].id,
+            guestId: weddingOtherGuests[1].id,
+            isPrimary: false,
+          });
+        }
+      }
+
+      // Third booking - family of 3
+      if (weddingBookingsWithGuests[2]) {
+        occupantData.push({
+          bookingId: weddingBookingsWithGuests[2].id,
+          guestId: weddingBookingsWithGuests[2].guestId,
+          isPrimary: true,
+        });
+        if (weddingOtherGuests[2]) {
+          occupantData.push({
+            bookingId: weddingBookingsWithGuests[2].id,
+            guestId: weddingOtherGuests[2].id,
+            isPrimary: false,
+          });
+        }
+        if (weddingOtherGuests[3]) {
+          occupantData.push({
+            bookingId: weddingBookingsWithGuests[2].id,
+            guestId: weddingOtherGuests[3].id,
+            isPrimary: false,
+          });
+        }
+      }
+
+      await prisma.roomOccupant.createMany({ data: occupantData });
+    }
+
+    // Corporate offsite - some shared rooms
+    const corpBookings = await prisma.booking.findMany({
+      where: { eventId: corpOffsite.id },
+      include: { guest: true },
+      take: 4,
+    });
+
+    const corpOtherGuests = await prisma.guest.findMany({
+      where: {
+        eventId: corpOffsite.id,
+        id: { notIn: corpBookings.map(b => b.guestId) },
+      },
+      take: 4,
+    });
+
+    if (corpBookings.length > 0 && corpOtherGuests.length > 0) {
+      const corpOccupants = [];
+      
+      for (let i = 0; i < Math.min(corpBookings.length, 2); i++) {
+        corpOccupants.push({
+          bookingId: corpBookings[i].id,
+          guestId: corpBookings[i].guestId,
+          isPrimary: true,
+        });
+        if (corpOtherGuests[i]) {
+          corpOccupants.push({
+            bookingId: corpBookings[i].id,
+            guestId: corpOtherGuests[i].id,
+            isPrimary: false,
+          });
+        }
+      }
+
+      await prisma.roomOccupant.createMany({ data: corpOccupants });
+    }
+
+    // Goa Wedding - couples sharing beach villas
+    const goaRoomBookings = await prisma.booking.findMany({
+      where: { eventId: goaWedding.id },
+      include: { guest: true },
+      take: 6,
+    });
+
+    const goaOtherGuests = await prisma.guest.findMany({
+      where: {
+        eventId: goaWedding.id,
+        id: { notIn: goaRoomBookings.map(b => b.guestId) },
+      },
+      take: 6,
+    });
+
+    if (goaRoomBookings.length > 0 && goaOtherGuests.length > 0) {
+      const goaOccupants = [];
+      
+      // Couples sharing villas
+      for (let i = 0; i < Math.min(goaRoomBookings.length, 4); i++) {
+        goaOccupants.push({
+          bookingId: goaRoomBookings[i].id,
+          guestId: goaRoomBookings[i].guestId,
+          isPrimary: true,
+        });
+        if (goaOtherGuests[i]) {
+          goaOccupants.push({
+            bookingId: goaRoomBookings[i].id,
+            guestId: goaOtherGuests[i].id,
+            isPrimary: false,
+          });
+        }
+      }
+
+      await prisma.roomOccupant.createMany({ data: goaOccupants });
+    }
+
+    // Pharma Conference - shared rooms for delegates
+    const pharmaBookings = await prisma.booking.findMany({
+      where: { eventId: pharmaConf.id },
+      include: { guest: true },
+      take: 4,
+    });
+
+    const pharmaOtherGuests = await prisma.guest.findMany({
+      where: {
+        eventId: pharmaConf.id,
+        id: { notIn: pharmaBookings.map(b => b.guestId) },
+      },
+      take: 4,
+    });
+
+    if (pharmaBookings.length > 0 && pharmaOtherGuests.length > 0) {
+      const pharmaOccupants = [];
+      
+      // Twin-sharing for conference delegates
+      for (let i = 0; i < Math.min(pharmaBookings.length, 2); i++) {
+        pharmaOccupants.push({
+          bookingId: pharmaBookings[i].id,
+          guestId: pharmaBookings[i].guestId,
+          isPrimary: true,
+        });
+        if (pharmaOtherGuests[i]) {
+          pharmaOccupants.push({
+            bookingId: pharmaBookings[i].id,
+            guestId: pharmaOtherGuests[i].id,
+            isPrimary: false,
+          });
+        }
+      }
+
+      await prisma.roomOccupant.createMany({ data: pharmaOccupants });
+    }
+
+    // IIT Reunion - batchmates sharing rooms for nostalgia
+    const reunionBookings = await prisma.booking.findMany({
+      where: { eventId: reunion.id },
+      include: { guest: true },
+      take: 6,
+    });
+
+    const reunionOtherGuests = await prisma.guest.findMany({
+      where: {
+        eventId: reunion.id,
+        id: { notIn: reunionBookings.map(b => b.guestId) },
+      },
+      take: 6,
+    });
+
+    if (reunionBookings.length > 0 && reunionOtherGuests.length > 0) {
+      const reunionOccupants = [];
+      
+      // Old roommates reuniting
+      for (let i = 0; i < Math.min(reunionBookings.length, 3); i++) {
+        reunionOccupants.push({
+          bookingId: reunionBookings[i].id,
+          guestId: reunionBookings[i].guestId,
+          isPrimary: true,
+        });
+        if (reunionOtherGuests[i]) {
+          reunionOccupants.push({
+            bookingId: reunionBookings[i].id,
+            guestId: reunionOtherGuests[i].id,
+            isPrimary: false,
+          });
+        }
+      }
+
+      await prisma.roomOccupant.createMany({ data: reunionOccupants });
+    }
+
+    // NovaByte Product Launch - VIP executive suites
+    const launchBookings = await prisma.booking.findMany({
+      where: { eventId: productLaunch.id },
+      include: { guest: true },
+      take: 4,
+    });
+
+    const launchOtherGuests = await prisma.guest.findMany({
+      where: {
+        eventId: productLaunch.id,
+        id: { notIn: launchBookings.map(b => b.guestId) },
+      },
+      take: 4,
+    });
+
+    if (launchBookings.length > 0 && launchOtherGuests.length > 0) {
+      const launchOccupants = [];
+      
+      // Executive assistants with VIPs
+      for (let i = 0; i < Math.min(launchBookings.length, 2); i++) {
+        launchOccupants.push({
+          bookingId: launchBookings[i].id,
+          guestId: launchBookings[i].guestId,
+          isPrimary: true,
+        });
+        if (launchOtherGuests[i]) {
+          launchOccupants.push({
+            bookingId: launchBookings[i].id,
+            guestId: launchOtherGuests[i].id,
+            isPrimary: false,
+          });
+        }
+      }
+
+      await prisma.roomOccupant.createMany({ data: launchOccupants });
+    }
+
+    console.log("✅ Vendors, RFPs, Schedules, and Room Occupants created successfully!");
 
     const totalEvents = 7;
     return NextResponse.json({

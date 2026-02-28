@@ -1226,6 +1226,7 @@ export default function OnboardingPage() {
                   </label>
                   {isEditing ? (
                     <input
+                      aria-label="Event Name"
                       className="w-full text-sm font-semibold text-gray-900 dark:text-zinc-100 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400"
                       value={parsedData.invite?.eventName || parsedData.contract?.eventName || ""}
                       onChange={(e) => {
@@ -1274,6 +1275,7 @@ export default function OnboardingPage() {
                   </label>
                   {isEditing ? (
                     <input
+                      aria-label="Venue"
                       className="w-full text-sm font-semibold text-gray-900 dark:text-zinc-100 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400"
                       value={parsedData.contract?.venue || ""}
                       onChange={(e) => updateContract("venue", e.target.value)}

@@ -17,6 +17,7 @@ import {
   Trash2,
   Pencil,
   Save,
+  AlertCircle,
 } from "lucide-react";
 
 interface Guest {
@@ -47,9 +48,14 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [loading, setLoading] = useState(false);
-  const [importResult, setImportResult] = useState<{ imported?: number; failed?: number } | null>(null);
+  const [importResult, setImportResult] = useState<{ 
+    imported?: number; 
+    failed?: number;
+    errors?: { name: string; error: string }[];
+  } | null>(null);
   const [toast, setToast] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [editData, setEditData] = useState({ name: "", email: "", phone: "", group: "", proximityRequest: "", notes: "" });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -73,6 +79,7 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
     if (!formData.name.trim()) return;
 
     setLoading(true);
+    setValidationErrors([]);
     try {
       const res = await fetch("/api/guests", {
         method: "POST",
@@ -85,9 +92,16 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
         setGuests([{ ...newGuest, bookings: [] }, ...guests]);
         setFormData({ name: "", email: "", phone: "", group: "", proximityRequest: "", notes: "" });
         setShowAddForm(false);
+        showToast("Guest added successfully");
+      } else {
+        const err = await res.json();
+        if (err.error) {
+          setValidationErrors([err.error]);
+        }
       }
     } catch (error) {
       console.error("Error adding guest:", error);
+      setValidationErrors(["Failed to add guest. Please try again."]);
     } finally {
       setLoading(false);
     }
@@ -127,6 +141,7 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
   const handleSaveEdit = async () => {
     if (!editingId || !editData.name.trim()) return;
     setLoading(true);
+    setValidationErrors([]);
     try {
       const res = await fetch("/api/guests", {
         method: "PUT",
@@ -140,9 +155,16 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
         ));
         showToast("Guest updated successfully");
         cancelEditing();
+      } else {
+        const err = await res.json();
+        if (err.error) {
+          setValidationErrors([err.error]);
+          showToast(err.error);
+        }
       }
     } catch (error) {
       console.error("Error updating guest:", error);
+      setValidationErrors(["Failed to update guest"]);
     } finally {
       setLoading(false);
     }
@@ -154,12 +176,13 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
 
     setLoading(true);
     setImportResult(null);
+    setValidationErrors([]);
 
     try {
       const text = await file.text();
       const lines = text.split("\n").filter((l) => l.trim());
       if (lines.length < 2) {
-        alert("CSV file must have at least a header row and one data row");
+        setValidationErrors(["CSV file must have at least a header row and one data row"]);
         return;
       }
 
@@ -181,7 +204,15 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
 
       if (res.ok) {
         const result = await res.json();
-        setImportResult({ imported: result.imported, failed: result.failed });
+        setImportResult({ 
+          imported: result.imported, 
+          failed: result.failed,
+          errors: result.errors 
+        });
+        
+        if (result.imported > 0) {
+          showToast(`Successfully imported ${result.imported} guest(s)`);
+        }
 
         // Refresh guest list
         const refreshRes = await fetch(`/api/guests?eventId=${eventId}`);
@@ -189,9 +220,13 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
           const refreshedGuests = await refreshRes.json();
           setGuests(refreshedGuests);
         }
+      } else {
+        const err = await res.json();
+        setValidationErrors([err.error || "Import failed"]);
       }
     } catch (error) {
       console.error("Error importing CSV:", error);
+      setValidationErrors(["Failed to import CSV. Please check the file format."]);
     } finally {
       setLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -351,19 +386,62 @@ export function GuestManagement({ eventId, initialGuests }: GuestManagementProps
 
       {/* Import Result */}
       {importResult && (
-        <div className="mb-6 p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-xl flex items-center gap-3">
-          <Check className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-          <p className="text-sm text-emerald-800 dark:text-emerald-300">
-            Successfully imported <strong>{importResult.imported}</strong> guests.
-            {importResult.failed ? ` ${importResult.failed} rows failed.` : ""}
-          </p>
-          <button
-            onClick={() => setImportResult(null)}
-            className="ml-auto text-emerald-600 hover:text-emerald-800"
-            title="Dismiss"
-          >
-            <X className="h-4 w-4" />
-          </button>
+        <div className="mb-6 space-y-3">
+          <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-xl flex items-center gap-3">
+            <Check className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <p className="text-sm text-emerald-800 dark:text-emerald-300">
+              Successfully imported <strong>{importResult.imported}</strong> guests.
+              {importResult.failed ? ` ${importResult.failed} rows failed.` : ""}
+            </p>
+            <button
+              onClick={() => setImportResult(null)}
+              className="ml-auto text-emerald-600 hover:text-emerald-800"
+              title="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          
+          {/* Detailed import errors */}
+          {importResult.errors && importResult.errors.length > 0 && (
+            <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-2">
+                The following guests had validation issues:
+              </p>
+              <ul className="text-sm text-amber-700 dark:text-amber-400 space-y-1 max-h-32 overflow-y-auto">
+                {importResult.errors.map((err, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-amber-500">•</span>
+                    <span><strong>{err.name}</strong>: {err.error}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Validation Errors */}
+      {validationErrors.length > 0 && (
+        <div className="mb-6 p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-xl">
+          <div className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-800 dark:text-red-300 mb-1">Validation Error</p>
+              <ul className="text-sm text-red-700 dark:text-red-400 space-y-1">
+                {validationErrors.map((error, i) => (
+                  <li key={i}>{error}</li>
+                ))}
+              </ul>
+            </div>
+            <button
+              onClick={() => setValidationErrors([])}
+              className="text-red-500 hover:text-red-700"
+              title="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
 

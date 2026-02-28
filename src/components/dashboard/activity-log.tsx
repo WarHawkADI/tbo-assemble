@@ -63,14 +63,19 @@ export function ActivityLog({ eventId }: ActivityLogProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [actionFilter, setActionFilter] = useState<string>("all");
   const [newEntryIds, setNewEntryIds] = useState<Set<string>>(new Set());
   const previousLogsRef = useRef<string[]>([]);
 
   const fetchActivity = (isManualRefresh = false) => {
     if (isManualRefresh) setRefreshing(true);
+    setError(null);
     fetch(`/api/events/${eventId}/activity?limit=50`)
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load activity");
+        return res.json();
+      })
       .then((data) => {
         const newLogs = Array.isArray(data) ? data : [];
         
@@ -91,7 +96,9 @@ export function ActivityLog({ eventId }: ActivityLogProps) {
         setLoading(false);
         setRefreshing(false);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("Activity fetch error:", err);
+        setError(navigator.onLine ? "Failed to load activity log" : "You are offline");
         setLoading(false);
         setRefreshing(false);
       });
@@ -144,6 +151,21 @@ export function ActivityLog({ eventId }: ActivityLogProps) {
             </div>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <AlertTriangle className="w-12 h-12 text-red-300 dark:text-red-600/50 mx-auto mb-3" />
+        <p className="text-red-600 dark:text-red-400 font-medium">{error}</p>
+        <button
+          onClick={() => fetchActivity(true)}
+          className="mt-3 text-sm text-[#ff6b35] hover:underline"
+        >
+          Try again
+        </button>
       </div>
     );
   }

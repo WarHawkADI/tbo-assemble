@@ -15,7 +15,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check room block exists and is truly full
+    // Verify event exists and is active
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) {
+      return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    }
+    if (event.status === "cancelled" || event.status === "completed") {
+      return NextResponse.json({ error: "Event is no longer accepting waitlist entries" }, { status: 400 });
+    }
+
+    // Check room block exists and belongs to this event
     const roomBlock = await prisma.roomBlock.findUnique({
       where: { id: roomBlockId },
       include: { bookings: true },
@@ -23,6 +32,10 @@ export async function POST(request: Request) {
 
     if (!roomBlock) {
       return NextResponse.json({ error: "Room block not found" }, { status: 404 });
+    }
+
+    if (roomBlock.eventId !== eventId) {
+      return NextResponse.json({ error: "Room block does not belong to this event" }, { status: 400 });
     }
 
     // Check for duplicate waitlist entry (only when email is provided)

@@ -31,6 +31,7 @@ model Event {
   secondaryColor  String          @default("#f0f9ff")
   accentColor     String          @default("#3b82f6")
   heroImageUrl    String?
+  expectedPax     Int?            // Expected number of attendees (can change dynamically)
   agentId         String
   agent           Agent           @relation(fields: [agentId], references: [id])
   roomBlocks      RoomBlock[]
@@ -42,6 +43,8 @@ model Event {
   activityLogs    ActivityLog[]
   feedbacks       Feedback[]
   discountRules   DiscountRule[]
+  rfps            RFP[]
+  scheduleItems   ScheduleItem[]
   status          String          @default("draft")
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @default(now()) @updatedAt
@@ -83,6 +86,7 @@ model Guest {
   event            Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
   bookings         Booking[]
   nudges           Nudge[]
+  occupants        RoomOccupant[]
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @default(now()) @updatedAt
 
@@ -117,6 +121,7 @@ model Booking {
   totalAmount Float
   status      String         @default("confirmed")
   addOns      BookingAddOn[]
+  occupants   RoomOccupant[] // Additional guests in this room
   checkedIn   Boolean        @default(false)
   checkedInAt DateTime?
   createdAt   DateTime       @default(now())
@@ -217,4 +222,78 @@ model DiscountRule {
   updatedAt   DateTime @default(now()) @updatedAt
 
   @@index([eventId])
+}
+
+// RFP (Request for Proposal) for comparing quotes from multiple vendors/hotels
+model Vendor {
+  id          String   @id @default(uuid())
+  name        String
+  email       String?
+  phone       String?
+  contactPerson String?
+  address     String?
+  notes       String?
+  rfps        RFP[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
+model RFP {
+  id              String    @id @default(uuid())
+  eventId         String
+  event           Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  vendorId        String
+  vendor          Vendor    @relation(fields: [vendorId], references: [id])
+  quotedAmount    Float
+  roomRate        Float?
+  foodRate        Float?
+  venueRate       Float?
+  additionalCosts Float?
+  validUntil      DateTime?
+  status          String    @default("pending") // pending, accepted, rejected, negotiating
+  notes           String?
+  attachmentUrl   String?
+  responseDate    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+
+  @@index([eventId])
+  @@index([vendorId])
+}
+
+// Event Schedule / Agenda for MICE events
+model ScheduleItem {
+  id          String   @id @default(uuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  date        DateTime
+  startTime   String   // HH:mm format
+  endTime     String   // HH:mm format
+  venue       String?  // Specific venue/room for this item
+  type        String   @default("session") // session, meal, break, networking, entertainment, transport
+  cost        Float?   // Cost associated with this schedule item
+  paxCount    Int?     // Expected attendees for this item
+  notes       String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([eventId])
+  @@index([date])
+}
+
+// Room Occupants - Track multiple guests per room
+model RoomOccupant {
+  id          String   @id @default(uuid())
+  bookingId   String
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  guestId     String
+  guest       Guest    @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  isPrimary   Boolean  @default(false) // Primary guest who made the booking
+  createdAt   DateTime @default(now())
+
+  @@index([bookingId])
+  @@index([guestId])
 }
