@@ -271,7 +271,7 @@ export default function Home() {
               <Link href="/dashboard/onboarding" className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#ff6b35] to-[#e55a2b] px-4 sm:px-5 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/25 hover:shadow-lg hover:-translate-y-0.5 transition-all btn-shimmer">
                 Get Started <ArrowRight className="h-4 w-4" />
               </Link>
-              <button onClick={() => setMobileNav(!mobileNav)} className="md:hidden p-2 rounded-lg text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800" aria-label="Toggle navigation menu" aria-expanded={mobileNav}>
+              <button onClick={() => setMobileNav(!mobileNav)} className="md:hidden p-2 rounded-lg text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800" aria-label="Toggle navigation menu" aria-expanded={mobileNav ? "true" : "false"}>
                 {mobileNav ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
             </div>
@@ -461,7 +461,7 @@ export default function Home() {
             {[
               {
                 icon: Sparkles, title: "GenAI Contract Parsing",
-                desc: "Upload your hotel contract PDF and event invitation. Our GPT-4o pipeline extracts room blocks, negotiated rates, dates, attrition penalties, and even theme colours — generating a branded microsite in under 60 seconds.",
+                desc: "Upload your hotel contract (PDF, Word, Excel, or image) and event invitation. Our AI pipeline extracts room blocks, negotiated rates, dates, attrition penalties, and even theme colours — generating a branded microsite in under 60 seconds.",
                 gradient: "from-purple-500 to-indigo-600",
                 bg: "bg-gradient-to-br from-purple-50 to-indigo-50/50 dark:from-purple-950/40 dark:to-indigo-950/20",
                 border: "border-purple-100/80 dark:border-purple-800/30",
@@ -529,7 +529,7 @@ export default function Home() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
             {[
-              { step: "01", title: "Upload Documents", desc: "Drop your hotel contract PDF and event invitation image. Our GenAI pipeline parses room types, rates, dates, and extracts theme colours for branding.", icon: FileText, color: "from-orange-500 to-amber-500", ring: "ring-orange-500/20" },
+              { step: "01", title: "Upload Documents", desc: "Drop your hotel contract (PDF, Word, Excel, or image) and event invitation. Our GenAI pipeline parses room types, rates, dates, and extracts theme colours for branding.", icon: FileText, color: "from-orange-500 to-amber-500", ring: "ring-orange-500/20" },
               { step: "02", title: "Review & Customise", desc: "Verify AI-extracted data, adjust room blocks, configure add-ons, set attrition rules, and fine-tune your branded event microsite.", icon: Layers, color: "from-blue-500 to-indigo-500", ring: "ring-blue-500/20" },
               { step: "03", title: "Go Live & Track", desc: "Share your microsite link with guests. Monitor bookings in real-time, allocate rooms, track revenue, and auto-nudge pending RSVPs.", icon: TrendingUp, color: "from-emerald-500 to-teal-500", ring: "ring-emerald-500/20" },
             ].map((item, idx) => (

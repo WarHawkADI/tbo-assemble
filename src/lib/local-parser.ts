@@ -5,6 +5,8 @@
  *   1. pdf-parse for text-based PDFs (fast, handles 90% of cases)
  *   2. JPEG stream extraction + tesseract.js OCR for scanned PDFs
  *   3. Direct tesseract.js OCR for uploaded images (PNG/JPEG/WebP)
+ *   4. xlsx for Excel files (.xlsx, .xls) - converts sheets to structured text
+ *   5. mammoth for Word documents (.docx, .doc) - extracts text and tables
  *
  * Extraction pipeline:
  *   1. Normalize extracted text (whitespace, broken lines, PDF artifacts)
@@ -30,8 +32,8 @@ const MONTHS: Record<string, string> = {
   jun: "06", jul: "07", aug: "08", sep: "09", sept: "09", oct: "10", nov: "11", dec: "12",
 };
 
-// Ordinal suffixes for dates
-const ORDINALS: string[] = ["st", "nd", "rd", "th"];
+// Ordinal suffixes for dates (used in regex patterns)
+const _ORDINALS: string[] = ["st", "nd", "rd", "th"];
 
 // Date sanity check: event dates should be within reasonable range
 const validateDateRange = (dateStr: string): boolean => {
@@ -57,7 +59,7 @@ const validateDateRange = (dateStr: string): boolean => {
 const inferYear = (month: number, day: number): number => {
   const now = new Date();
   const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1;
+  const _currentMonth = now.getMonth() + 1;
   
   // If the month/day has already passed this year, assume next year
   const testDate = new Date(currentYear, month - 1, day);
@@ -137,7 +139,8 @@ function normalizeText(raw: string): string {
   text = text.replace(/(\d)\s+(\/|\-|\.)\s+(\d)/g, "$1$2$3");
   
   // Additional pass: Fix remaining O's in numeric contexts (e.g. "4,OO,OOO" → "4,00,000")
-  // Look for patterns like "digit,OOO" or ",OO," and replace O with 0  text = text.replace(/(\d,)O+/g, (match, prefix) => prefix + '0'.repeat(match.length - prefix.length));
+  // Look for patterns like "digit,OOO" or ",OO," and replace O with 0
+  text = text.replace(/(\d,)O+/g, (match, prefix) => prefix + '0'.repeat(match.length - prefix.length));
   text = text.replace(/,O+(?=[,\s\n]|$)/g, (match) => ',' + '0'.repeat(match.length - 1));
   
   // Re-add space between day and month name after digit compression: "25May" → "25 May"
@@ -281,6 +284,224 @@ export async function extractTextWithOCRFallback(
  */
 async function extractTextFromImage(buffer: Buffer): Promise<string> {
   return performOCR(buffer);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXCEL FILE EXTRACTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Extract text from an Excel file (.xlsx, .xls).
+ * Reads all sheets and converts them to structured text format.
+ * 
+ * Strategy:
+ *   1. Read workbook with xlsx library
+ *   2. For each sheet, convert to array of arrays (preserves table structure)
+ *   3. Format as text with proper spacing for parseTableRows to consume
+ *   4. Handle both contract data (room rates, totals) and tabular inventory
+ * 
+ * Output format:
+ *   - Header rows are preserved with formatting
+ *   - Numeric columns maintain alignment for parsing
+ *   - Tables use pipe separators for reliable column detection
+ *   - Empty rows are collapsed but preserved for section detection
+ */
+export async function extractTextFromExcel(buffer: Buffer): Promise<string> {
+  try {
+    // Dynamic import to avoid bundling issues
+    const XLSX = await import("xlsx");
+    
+    // Read workbook from buffer
+    const workbook = XLSX.read(buffer, { 
+      type: "buffer",
+      cellDates: true,      // Parse dates as Date objects
+      cellNF: true,         // Preserve number formats
+      cellText: false,      // Don't generate text
+      raw: false,           // Format values
+    });
+    
+    const textParts: string[] = [];
+    
+    // Process each sheet
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      if (!sheet) continue;
+      
+      // Convert sheet to array of arrays (preserves structure better for contracts)
+      const data: (string | number | Date | null | undefined)[][] = XLSX.utils.sheet_to_json(sheet, { 
+        header: 1,          // Use array of arrays format
+        raw: false,         // Format values as strings
+        defval: "",         // Default value for empty cells
+        blankrows: false,   // Skip completely blank rows
+      });
+      
+      if (data.length === 0) continue;
+      
+      // Add sheet header if multiple sheets
+      if (workbook.SheetNames.length > 1) {
+        textParts.push(`\n=== Sheet: ${sheetName} ===\n`);
+      }
+      
+      // Detect if this sheet is a table (has header with 3+ columns) vs key-value pairs
+      let isTable = false;
+      let headerRowIndex = -1;
+      
+      // Look for a header row (row with 3+ non-empty text cells)
+      for (let i = 0; i < Math.min(data.length, 10); i++) {
+        const row = data[i];
+        if (!Array.isArray(row)) continue;
+        const nonEmptyCount = row.filter(cell => 
+          cell !== "" && cell !== null && cell !== undefined
+        ).length;
+        // Check if this looks like a header (multiple columns, mostly text)
+        const textCount = row.filter(cell => 
+          typeof cell === "string" && cell.length > 0 && !/^\d+$/.test(cell)
+        ).length;
+        if (nonEmptyCount >= 3 && textCount >= 2) {
+          isTable = true;
+          headerRowIndex = i;
+          break;
+        }
+      }
+      
+      for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+        const row = data[rowIndex];
+        if (!Array.isArray(row)) continue;
+        
+        // Convert cells to strings
+        const cells = row.map(cell => {
+          if (cell === null || cell === undefined || cell === "") return "";
+          
+          // Handle dates
+          if (cell instanceof Date) {
+            return cell.toISOString().split("T")[0]; // YYYY-MM-DD format
+          }
+          
+          // Handle numbers - preserve currency formatting hints
+          if (typeof cell === "number") {
+            // Format with Indian number system for large numbers
+            if (cell >= 1000) {
+              return cell.toLocaleString("en-IN"); // Indian number format: 1,50,000
+            }
+            return String(cell);
+          }
+          
+          return String(cell).trim();
+        });
+        
+        // Skip completely empty rows
+        const nonEmpty = cells.filter(c => c !== "");
+        if (nonEmpty.length === 0) continue;
+        
+        // Count non-empty cells
+        const nonEmptyCount = nonEmpty.length;
+        
+        // Determine output format based on context
+        if (isTable && rowIndex >= headerRowIndex && nonEmptyCount >= 2) {
+          // Table row: use pipe separator for reliable column detection
+          // This format works well with parseTableRows
+          const paddedCells = cells.map((c, _i) => {
+            // Pad numeric cells for alignment
+            if (/^[\d,]+$/.test(c)) {
+              return c.padStart(10);
+            }
+            return c;
+          });
+          textParts.push(paddedCells.filter(c => c !== "").join(" | "));
+        } else if (cells.length === 2 && cells[0] && cells[1] && !isTable) {
+          // Looks like a key:value pair (common in contract header sections)
+          textParts.push(`${cells[0]}: ${cells[1]}`);
+        } else if (cells.length >= 3 && nonEmptyCount >= 3) {
+          // Multi-column data row - use pipe separator
+          textParts.push(cells.filter(c => c !== "").join(" | "));
+        } else {
+          // Single column or irregular - preserve as-is
+          textParts.push(nonEmpty.join(" "));
+        }
+      }
+      
+      textParts.push(""); // Blank line between sheets
+    }
+    
+    return textParts.join("\n");
+  } catch (err) {
+    console.error("Excel extraction error:", err);
+    throw new Error("Failed to parse Excel file. The file may be corrupted or password-protected.");
+  }
+}
+
+/**
+ * Check if a MIME type indicates an Excel file.
+ */
+export function isExcelMimeType(mimeType: string): boolean {
+  return (
+    mimeType.includes("spreadsheet") ||
+    mimeType.includes("excel") ||
+    mimeType.includes("xlsx") ||
+    mimeType.includes("xls") ||
+    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mimeType === "application/vnd.ms-excel"
+  );
+}
+
+/**
+ * Extract text from a Word document (.docx, .doc) using mammoth.
+ * 
+ * Features:
+ *   - Extracts plain text from Word documents
+ *   - Preserves paragraph structure
+ *   - Handles tables by converting to pipe-separated format
+ *   - Strips formatting but maintains content structure
+ * 
+ * Output format:
+ *   - Paragraphs separated by newlines
+ *   - Tables converted to pipe-separated rows for parsing
+ *   - Headers and footers included
+ */
+export async function extractTextFromDocx(buffer: Buffer): Promise<string> {
+  try {
+    // Dynamic import to avoid bundling issues
+    const mammoth = await import("mammoth");
+    
+    // Extract raw text from the document
+    const result = await mammoth.extractRawText({ buffer });
+    
+    if (!result.value || result.value.trim().length === 0) {
+      throw new Error("No text content found in the document");
+    }
+    
+    // Clean up the extracted text
+    let text = result.value;
+    
+    // Normalize whitespace - remove excessive blank lines but preserve paragraph structure
+    text = text.replace(/\n{3,}/g, "\n\n");
+    
+    // Fix common Word artifacts
+    text = text.replace(/[\u00A0]/g, " "); // Non-breaking spaces
+    text = text.replace(/[\u2018\u2019]/g, "'"); // Smart quotes
+    text = text.replace(/[\u201C\u201D]/g, '"'); // Smart double quotes
+    text = text.replace(/[\u2013\u2014]/g, "-"); // En/em dashes
+    text = text.replace(/\t+/g, " | "); // Convert tabs to pipe separators (helps with table detection)
+    
+    return text.trim();
+  } catch (err) {
+    console.error("DOCX extraction error:", err);
+    throw new Error("Failed to parse Word document. The file may be corrupted or password-protected.");
+  }
+}
+
+/**
+ * Check if a MIME type indicates a Word document.
+ */
+export function isDocxMimeType(mimeType: string): boolean {
+  return (
+    mimeType.includes("word") ||
+    mimeType.includes("docx") ||
+    mimeType.includes("doc") ||
+    mimeType.includes("msword") ||
+    mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mimeType === "application/msword"
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -557,6 +778,43 @@ export function parseTableRows(text: string): TableRow[] {
 
     // Skip divider lines (----, ====, etc.)
     if (/^[-=_|+\s•]{3,}$/.test(line)) continue;
+
+    // ═══ PIPE-SEPARATED ROW HANDLING (Excel exports) ═══
+    // Handle rows like: "Deluxe Room | 8500 | 60 | 1-3 | Garden View"
+    if (line.includes(" | ")) {
+      const columns = line.split(" | ").map(c => c.trim());
+      if (columns.length >= 2) {
+        // First column is description, rest are potential numbers
+        const description = columns[0];
+        
+        // Skip header rows (first column doesn't look like a room/service name)
+        if (/^(?:room\s*type|service|item|description|category|accommodation)\s*$/i.test(description)) {
+          continue;
+        }
+        
+        // Extract ONLY first 2 numeric columns (typically Rate and Quantity)
+        // This avoids picking up Floor numbers, room counts, or other trailing data
+        const numbers: number[] = [];
+        for (let i = 1; i < columns.length && numbers.length < 2; i++) {
+          const col = columns[i];
+          // Extract number from column (handles "8,500" or "8500" or "₹8,500")
+          const numMatch = col.match(/^[₹$Rs.\s]*?([\d,]+(?:\.\d{1,2})?)$/);
+          if (numMatch) {
+            const num = parseFloat(numMatch[1].replace(/,/g, ""));
+            if (num > 0) numbers.push(num);
+          }
+        }
+        
+        // Skip if no numbers found or description too short
+        if (numbers.length >= 2 && description.length >= 2) {
+          // Skip "Total" rows
+          if (!/^(?:total|sub\s*total|grand\s*total|net\s*total|gross\s*total)/i.test(description)) {
+            rows.push({ description, numbers, rawLine: line });
+          }
+        }
+        continue;
+      }
+    }
 
     // Try to parse this line as a table row
     // Pre-process: replace parenthetical descriptors like "(150 pax)" or "(incl. taxes)" with a
@@ -1188,7 +1446,7 @@ function extractLocation(
       // Double-check after cleaning as well
       if (isGuestCountField(clean)) {
         continue;
-     }
+      }
       // Skip plain street addresses (e.g. "456 Maple Street") – no city component
       if ((key === "address" || key === "location") && isBareStreetAddress(clean)) {
         continue;
@@ -2140,7 +2398,7 @@ function extractTotalAmount(text: string, fields: Record<string, string>): numbe
 function extractCurrency(text: string): string {
   // ABBREVIATION SUPPORT: Look for currency in abbreviated format
   // "Currency: INR" or "CCY: USD"
-  const abbrevCurrency = text.match(/(?:currency|ccy)\s*[:=]\s*(INR|USD|EUR|GBP)/i);
+  const abbrevCurrency = text.match(/(?:currency|ccy)\s*[:=]\s*(INR|USD|EUR|GBP|AED|SAR|OMR|BHD|QAR|KWD)/i);
   if (abbrevCurrency) return abbrevCurrency[1].toUpperCase();
   
   // Check for Indian Rupee: ₹, INR, Rs., Rs, Rupee
@@ -2148,6 +2406,26 @@ function extractCurrency(text: string): string {
   if (/\$|\bUSD\b|us\s+dollar/i.test(text)) return "USD";
   if (/€|\bEUR\b|euro/i.test(text)) return "EUR";
   if (/£|\bGBP\b|pound/i.test(text)) return "GBP";
+  
+  // Middle East currencies
+  if (/\bAED\b|(?:UAE|emirati)\s*dirham/i.test(text)) return "AED";
+  if (/\bSAR\b|saudi\s*riyal/i.test(text)) return "SAR";
+  if (/\bOMR\b|omani\s*rial/i.test(text)) return "OMR";
+  if (/\bBHD\b|bahraini\s*dinar/i.test(text)) return "BHD";
+  if (/\bQAR\b|qatari\s*riyal/i.test(text)) return "QAR";
+  if (/\bKWD\b|kuwaiti\s*dinar/i.test(text)) return "KWD";
+  
+  // Location-based fallback: Middle East cities → respective currencies
+  if (/\b(?:Dubai|Abu\s*Dhabi|Sharjah|Ajman|Ras\s*al\s*Khaimah|Fujairah|UAE|United\s*Arab\s*Emirates)\b/i.test(text)) {
+    return "AED";
+  }
+  if (/\b(?:Riyadh|Jeddah|Mecca|Medina|Dammam|Saudi\s*Arabia)\b/i.test(text)) {
+    return "SAR";
+  }
+  if (/\b(?:Muscat|Oman)\b/i.test(text)) return "OMR";
+  if (/\b(?:Manama|Bahrain)\b/i.test(text)) return "BHD";
+  if (/\b(?:Doha|Qatar)\b/i.test(text)) return "QAR";
+  if (/\b(?:Kuwait\s*City|Kuwait)\b/i.test(text)) return "KWD";
   
   // Fallback: If text contains Indian location/hotel names, assume INR
   if (/\b(?:Delhi|Mumbai|Bangalore|Chennai|Kolkata|Hyderabad|Pune|Jaipur|Goa|India)\b/i.test(text)) {
@@ -2265,7 +2543,7 @@ function extractHotelContact(text: string, fields: Record<string, string>): Pars
 }
 
 /** Extract agent / coordinating travel agent contact. */
-function extractAgentContact(text: string, fields: Record<string, string>): ParsedContract["agentContact"] {
+function extractAgentContact(text: string, _fields: Record<string, string>): ParsedContract["agentContact"] {
   const result: NonNullable<ParsedContract["agentContact"]> = {};
 
   // Common label: "Coordinating Agent: Rajesh Kumar · TBO Travel Solutions · +91 98765 43210"
@@ -2773,10 +3051,6 @@ export function extractAddOns(
       const idx = lower.indexOf(match[0]);
       const lineStart = lower.lastIndexOf("\n", idx);
       const lineEnd = lower.indexOf("\n", idx + match[0].length);
-      const currentLine = lower.substring(
-        lineStart >= 0 ? lineStart : 0,
-        lineEnd >= 0 ? lineEnd : lower.length
-      );
       // Also check NEXT line (complimentary/included often on the line below)
       const nextLineEnd = lower.indexOf(
         "\n",
@@ -3317,6 +3591,32 @@ export async function parseContractLocally(
           "Failed to extract text from this PDF. The file may be corrupted, password-protected, or contain only scanned images.",
       };
     }
+  } else if (isExcelMimeType(mimeType)) {
+    // Excel file: extract text from spreadsheet
+    try {
+      const rawText = await extractTextFromExcel(buffer);
+      text = normalizeText(rawText);
+    } catch (err) {
+      console.error("Excel extraction error:", err);
+      return {
+        success: false,
+        error:
+          "Failed to extract data from this Excel file. The file may be corrupted, password-protected, or in an unsupported format.",
+      };
+    }
+  } else if (isDocxMimeType(mimeType)) {
+    // Word document: extract text using mammoth
+    try {
+      const rawText = await extractTextFromDocx(buffer);
+      text = normalizeText(rawText);
+    } catch (err) {
+      console.error("DOCX extraction error:", err);
+      return {
+        success: false,
+        error:
+          "Failed to extract data from this Word document. The file may be corrupted, password-protected, or in an unsupported format.",
+      };
+    }
   } else if (
     mimeType.includes("image") ||
     mimeType.includes("png") ||
@@ -3340,7 +3640,7 @@ export async function parseContractLocally(
     return {
       success: false,
       error:
-        "Unsupported file type. Please upload a PDF or image file (PNG, JPEG, WebP).",
+        "Unsupported file type. Please upload a PDF, Word document (.docx, .doc), Excel file (.xlsx, .xls), or image file (PNG, JPEG, WebP).",
     };
   }
 
@@ -3374,7 +3674,7 @@ export async function parseContractLocally(
   const rooms = extractRooms(text, tableRows);
   const addOns = extractAddOns(text, tableRows);
   const eventServices = extractEventServices(text, tableRows);
-  const attritionRules = extractAttritionRules(text);
+  const attritionRules = extractAttritionRules(text, checkIn);
 
   // ── Extended metadata ──────────────────────────────────────────────────────
   const contractNo    = extractContractNo(text, fields);
@@ -3472,6 +3772,40 @@ export async function parseInviteLocally(
     if (!validation.isValid) {
       return { success: false, error: validation.error, validation };
     }
+  } else if (isExcelMimeType(mimeType)) {
+    // Excel file: extract text from spreadsheet
+    try {
+      const rawText = await extractTextFromExcel(buffer);
+      text = normalizeText(rawText);
+    } catch (err) {
+      console.error("Excel invite extraction error:", err);
+      return {
+        success: false,
+        error: "Failed to extract data from this Excel file.",
+      };
+    }
+
+    const validation = validateInviteText(text);
+    if (!validation.isValid) {
+      return { success: false, error: validation.error, validation };
+    }
+  } else if (isDocxMimeType(mimeType)) {
+    // Word document: extract text from DOCX
+    try {
+      const rawText = await extractTextFromDocx(buffer);
+      text = normalizeText(rawText);
+    } catch (err) {
+      console.error("DOCX invite extraction error:", err);
+      return {
+        success: false,
+        error: "Failed to extract data from this Word document.",
+      };
+    }
+
+    const validation = validateInviteText(text);
+    if (!validation.isValid) {
+      return { success: false, error: validation.error, validation };
+    }
   } else if (
     mimeType.includes("image") ||
     mimeType.includes("png") ||
@@ -3493,7 +3827,7 @@ export async function parseInviteLocally(
   } else {
     return {
       success: false,
-      error: `Unsupported file type: ${mimeType}. Please upload a PDF or image file.`,
+      error: `Unsupported file type: ${mimeType}. Please upload a PDF, Word document (.docx, .doc), Excel file (.xlsx, .xls), or image file.`,
     };
   }
 

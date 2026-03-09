@@ -887,7 +887,7 @@ export default function OnboardingPage() {
                   </div>
                   <div>
                     <CardTitle className="text-sm">Hotel Contract</CardTitle>
-                    <CardDescription className="text-xs">PDF or image of venue agreement</CardDescription>
+                    <CardDescription className="text-xs">PDF, Word, Excel, or image of venue agreement</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -916,12 +916,12 @@ export default function OnboardingPage() {
                     <>
                       <Upload className="h-8 w-8 text-gray-300 dark:text-zinc-600 mb-2" />
                       <span className="text-sm text-gray-500 dark:text-zinc-400">Drop file or click to upload</span>
-                      <span className="text-xs text-gray-400 dark:text-zinc-500 mt-1">PDF, PNG, JPG accepted</span>
+                      <span className="text-xs text-gray-400 dark:text-zinc-500 mt-1">PDF, Word, Excel, PNG, JPG accepted</span>
                     </>
                   )}
                   <input
                     type="file"
-                    accept=".pdf,.png,.jpg,.jpeg"
+                    accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.docx,.doc"
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0] || null;
@@ -942,7 +942,7 @@ export default function OnboardingPage() {
                   </div>
                   <div>
                     <CardTitle className="text-sm">Event Invitation</CardTitle>
-                    <CardDescription className="text-xs">Image for theme & color extraction</CardDescription>
+                    <CardDescription className="text-xs">Image, PDF, Word, or Excel for theme extraction</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -971,12 +971,12 @@ export default function OnboardingPage() {
                     <>
                       <Upload className="h-8 w-8 text-gray-300 dark:text-zinc-600 mb-2" />
                       <span className="text-sm text-gray-500 dark:text-zinc-400">Drop file or click to upload</span>
-                      <span className="text-xs text-gray-400 dark:text-zinc-500 mt-1">PDF, PNG, JPG, WebP accepted</span>
+                      <span className="text-xs text-gray-400 dark:text-zinc-500 mt-1">PDF, Word, Excel, PNG, JPG, WebP accepted</span>
                     </>
                   )}
                   <input
                     type="file"
-                    accept=".pdf,.png,.jpg,.jpeg,.webp"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.docx,.doc"
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0] || null;
