@@ -177,11 +177,11 @@ export default async function MicrositePage({
             />
           </div>
 
-          <p className="text-xs sm:text-sm uppercase tracking-[0.2em] sm:tracking-[0.3em] mb-3 sm:mb-4 font-semibold" style={{ color: event.accentColor }}>
+          <p className="text-sm sm:text-base md:text-lg uppercase tracking-[0.2em] sm:tracking-[0.3em] mb-3 sm:mb-4 font-black" style={{ color: event.accentColor }}>
             <T k="youre_invited" />
           </p>
           
-          <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold mb-4 sm:mb-6 tracking-tight text-gray-900 dark:text-zinc-100">
+          <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl xl:text-9xl font-black mb-4 sm:mb-6 tracking-tight text-gray-950 dark:text-white drop-shadow-sm">
             {event.name}
           </h1>
           
