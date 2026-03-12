@@ -1,7 +1,7 @@
 "use client";
 
-import { Star, MessageSquare, Copy, Check, TrendingUp, TrendingDown, Minus, Download, SmilePlus, Frown, Meh } from "lucide-react";
-import { useState, useMemo } from "react";
+import { Star, MessageSquare, Copy, Check, TrendingUp, TrendingDown, Minus, Download, SmilePlus, Frown, Meh, RefreshCw } from "lucide-react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 
 interface FeedbackItem {
   id: string;
@@ -13,16 +13,19 @@ interface FeedbackItem {
   createdAt: string;
 }
 
+interface FeedbackStats {
+  avgRating: number;
+  avgStay: number;
+  avgEvent: number;
+  total: number;
+}
+
 interface FeedbackClientProps {
+  eventId: string;
   eventName: string;
   feedbackUrl: string;
-  feedbacks: FeedbackItem[];
-  stats: {
-    avgRating: number;
-    avgStay: number;
-    avgEvent: number;
-    total: number;
-  };
+  initialFeedbacks: FeedbackItem[];
+  initialStats: FeedbackStats;
 }
 
 function Stars({ rating, max = 5 }: { rating: number; max?: number }) {
@@ -59,16 +62,55 @@ function SentimentBadge({ rating }: { rating: number }) {
 }
 
 export function FeedbackClient({
+  eventId,
   eventName,
   feedbackUrl,
-  feedbacks,
-  stats,
+  initialFeedbacks,
+  initialStats,
 }: FeedbackClientProps) {
   const [copied, setCopied] = useState(false);
+  const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>(initialFeedbacks);
+  const [stats, setStats] = useState<FeedbackStats>(initialStats);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fullUrl = typeof window !== "undefined"
     ? `${window.location.origin}${feedbackUrl}`
     : feedbackUrl;
+
+  // Fetch latest feedbacks from API
+  const fetchFeedbacks = useCallback(async () => {
+    try {
+      setRefreshing(true);
+      const res = await fetch(`/api/events/${eventId}/feedback`);
+      if (res.ok) {
+        const data: FeedbackItem[] = await res.json();
+        setFeedbacks(data);
+        // Recalculate stats
+        const avgRating = data.length > 0
+          ? data.reduce((s, f) => s + f.rating, 0) / data.length
+          : 0;
+        const stayRatings = data.filter((f) => f.stayRating);
+        const avgStay = stayRatings.length > 0
+          ? stayRatings.reduce((s, f) => s + (f.stayRating || 0), 0) / stayRatings.length
+          : 0;
+        const eventRatings = data.filter((f) => f.eventRating);
+        const avgEvent = eventRatings.length > 0
+          ? eventRatings.reduce((s, f) => s + (f.eventRating || 0), 0) / eventRatings.length
+          : 0;
+        setStats({ avgRating, avgStay, avgEvent, total: data.length });
+      }
+    } catch (err) {
+      console.error("Failed to fetch feedbacks:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [eventId]);
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(fetchFeedbacks, 30000);
+    return () => clearInterval(interval);
+  }, [fetchFeedbacks]);
 
   const sentimentBreakdown = useMemo(() => {
     const positive = feedbacks.filter((f) => f.rating >= 4).length;
@@ -121,7 +163,7 @@ export function FeedbackClient({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-zinc-800 dark:text-zinc-100">
             Guest Feedback
@@ -130,28 +172,39 @@ export function FeedbackClient({
             {stats.total} responses for {eventName}
           </p>
         </div>
-        <button
-          onClick={copyLink}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          {copied ? (
-            <>
-              <Check className="w-4 h-4" /> Copied!
-            </>
-          ) : (
-            <>
-              <Copy className="w-4 h-4" /> Share Feedback Form
-            </>
-          )}
-        </button>
-        {feedbacks.length > 0 && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={exportFeedbackCSV}
-            className="flex items-center gap-2 px-4 py-2 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-medium rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors"
+            onClick={fetchFeedbacks}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-3 py-2 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-medium rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50"
+            title="Refresh feedbacks"
           >
-            <Download className="w-4 h-4" /> Export CSV
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Refresh</span>
           </button>
-        )}
+          <button
+            onClick={copyLink}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            {copied ? (
+              <>
+                <Check className="w-4 h-4" /> Copied!
+              </>
+            ) : (
+              <>
+                <Copy className="w-4 h-4" /> Share Feedback Form
+              </>
+            )}
+          </button>
+          {feedbacks.length > 0 && (
+            <button
+              onClick={exportFeedbackCSV}
+              className="flex items-center gap-2 px-4 py-2 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-medium rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors"
+            >
+              <Download className="w-4 h-4" /> Export CSV
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stats */}

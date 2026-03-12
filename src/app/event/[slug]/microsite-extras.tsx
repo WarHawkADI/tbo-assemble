@@ -187,19 +187,19 @@ export function MicrositeSocialProof({ guestCount }: { guestCount: number }) {
   const Icon = currentProof.icon;
 
   return (
-    <div className="fixed bottom-20 lg:bottom-6 left-4 z-40 animate-social-proof">
-      <div className="bg-white dark:bg-zinc-800 rounded-xl shadow-lg border border-gray-200 dark:border-zinc-700 px-4 py-3 flex items-center gap-3 max-w-xs relative group hover:shadow-xl transition-shadow">
+    <div className="fixed bottom-16 sm:bottom-20 lg:bottom-6 left-2 sm:left-4 z-40 animate-social-proof">
+      <div className="bg-white dark:bg-zinc-800 rounded-lg sm:rounded-xl shadow-lg border border-gray-200 dark:border-zinc-700 px-3 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-3 max-w-[calc(100vw-2rem)] sm:max-w-xs relative group hover:shadow-xl transition-shadow">
         <button
           onClick={() => setShow(false)}
-          className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-gray-200 dark:bg-zinc-700 flex items-center justify-center text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-zinc-600 transition-colors text-xs leading-none opacity-0 group-hover:opacity-100"
+          className="absolute -top-1.5 -right-1.5 sm:-top-2 sm:-right-2 h-4 w-4 sm:h-5 sm:w-5 rounded-full bg-gray-200 dark:bg-zinc-700 flex items-center justify-center text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-zinc-600 transition-colors text-[10px] sm:text-xs leading-none opacity-0 group-hover:opacity-100"
           aria-label="Dismiss"
         >
           &times;
         </button>
-        <div className={`flex h-8 w-8 items-center justify-center rounded-full shrink-0 ${colorClasses[currentProof.color]}`}>
-          <Icon className="h-4 w-4" />
+        <div className={`flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full shrink-0 ${colorClasses[currentProof.color]}`}>
+          <Icon className="h-3 w-3 sm:h-4 sm:w-4" />
         </div>
-        <p className="text-xs font-medium text-gray-700 dark:text-zinc-300">
+        <p className="text-[10px] sm:text-xs font-medium text-gray-700 dark:text-zinc-300">
           {currentProof.text}
         </p>
       </div>
@@ -219,21 +219,21 @@ export function MicrositeBottomNav({
   accentColor: string;
 }) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 lg:hidden animate-slide-up-nav">
-      <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border-t border-gray-200 dark:border-zinc-800 px-4 py-3 flex items-center gap-3">
+    <div className="fixed bottom-0 left-0 right-0 z-50 sm:hidden animate-slide-up-nav">
+      <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border-t border-gray-200 dark:border-zinc-800 px-3 py-2.5 flex items-center gap-2">
         <Link
           href={feedbackUrl}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-medium text-gray-600 dark:text-zinc-400 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-[11px] font-medium text-gray-600 dark:text-zinc-400 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors"
         >
-          <MessageSquare className="h-3.5 w-3.5" />
+          <MessageSquare className="h-3 w-3" />
           <T k="feedback" />
         </Link>
         <Link
           href={bookUrl}
-          className="flex-[2] flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-0.5 shadow-md"
+          className="flex-[2] flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-semibold text-white transition-all hover:-translate-y-0.5 shadow-md"
           style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
         >
-          <T k="reserve_room" /> <ArrowRight className="h-3.5 w-3.5" />
+          <T k="reserve_room" /> <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
     </div>

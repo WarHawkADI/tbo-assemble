@@ -68,23 +68,23 @@ export function Countdown({ targetDate, label, className = "", compact = false }
     return (
       <div className={className}>
         {translatedLabel && (
-          <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2 text-center uppercase tracking-wider">
+          <p className="text-[10px] sm:text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5 sm:mb-2 text-center uppercase tracking-wider">
             {translatedLabel}
           </p>
         )}
-        <div className="flex items-center gap-2 justify-center">
+        <div className="flex items-center gap-1 sm:gap-2 justify-center">
           {[t("days"), t("hours"), t("minutes"), t("seconds")].map((u, i) => (
-            <div key={u} className="flex items-center gap-2">
+            <div key={u} className="flex items-center gap-1 sm:gap-2">
               <div className="flex flex-col items-center">
-                <span className="text-xl font-bold font-mono text-zinc-800 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800 rounded-lg px-2.5 py-1 min-w-[3rem] text-center tabular-nums">
+                <span className="text-base sm:text-xl font-bold font-mono text-zinc-800 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800 rounded-md sm:rounded-lg px-1.5 sm:px-2.5 py-0.5 sm:py-1 min-w-[2rem] sm:min-w-[3rem] text-center tabular-nums">
                   --
                 </span>
-                <span className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1 uppercase tracking-wider">
+                <span className="text-[8px] sm:text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5 sm:mt-1 uppercase tracking-wider">
                   {u}
                 </span>
               </div>
               {i < 3 && (
-                <span className="text-lg font-bold text-zinc-300 dark:text-zinc-600 mb-4">:</span>
+                <span className="text-sm sm:text-lg font-bold text-zinc-300 dark:text-zinc-600 mb-3 sm:mb-4">:</span>
               )}
             </div>
           ))}
@@ -122,23 +122,23 @@ export function Countdown({ targetDate, label, className = "", compact = false }
   return (
     <div className={className}>
       {translatedLabel && (
-        <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2 text-center uppercase tracking-wider">
+        <p className="text-[10px] sm:text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5 sm:mb-2 text-center uppercase tracking-wider">
           {translatedLabel}
         </p>
       )}
-      <div className="flex items-center gap-2 justify-center">
+      <div className="flex items-center gap-1 sm:gap-2 justify-center">
         {units.map((unit, i) => (
-          <div key={unit.label} className="flex items-center gap-2">
+          <div key={unit.label} className="flex items-center gap-1 sm:gap-2">
             <div className="flex flex-col items-center">
-              <span className="text-xl font-bold font-mono text-zinc-800 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800 rounded-lg px-2.5 py-1 min-w-[3rem] text-center tabular-nums transition-all">
+              <span className="text-base sm:text-xl font-bold font-mono text-zinc-800 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800 rounded-md sm:rounded-lg px-1.5 sm:px-2.5 py-0.5 sm:py-1 min-w-[2rem] sm:min-w-[3rem] text-center tabular-nums transition-all">
                 {String(unit.value).padStart(2, "0")}
               </span>
-              <span className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1 uppercase tracking-wider">
+              <span className="text-[8px] sm:text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5 sm:mt-1 uppercase tracking-wider">
                 {unit.label}
               </span>
             </div>
             {i < units.length - 1 && (
-              <span className="text-lg font-bold text-zinc-300 dark:text-zinc-600 mb-4 animate-pulse">:</span>
+              <span className="text-sm sm:text-lg font-bold text-zinc-300 dark:text-zinc-600 mb-3 sm:mb-4 animate-pulse">:</span>
             )}
           </div>
         ))}

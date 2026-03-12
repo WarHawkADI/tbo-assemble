@@ -1,6 +1,32 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 
+// GET - List bookings for an event
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const eventId = searchParams.get("eventId");
+
+    if (!eventId) {
+      return NextResponse.json({ error: "eventId is required" }, { status: 400 });
+    }
+
+    const bookings = await prisma.booking.findMany({
+      where: { eventId },
+      include: {
+        guest: true,
+        roomBlock: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return NextResponse.json(bookings);
+  } catch (error) {
+    console.error("Fetch bookings error:", error);
+    return NextResponse.json({ error: "Failed to fetch bookings" }, { status: 500 });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const {

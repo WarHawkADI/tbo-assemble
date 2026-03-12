@@ -41,17 +41,17 @@ const navigation = [
 
 const eventNavigation = [
   { name: "Overview", href: "", icon: CalendarPlus, description: "Event summary & stats" },
+  { name: "Schedule", href: "/schedule", icon: CalendarDays, description: "Day-wise agenda & costing" },
   { name: "Inventory", href: "/inventory", icon: Hotel, description: "Room blocks & availability" },
   { name: "Guests", href: "/guests", icon: Users, description: "Guest list & import" },
+  { name: "Room Assign", href: "/rooms", icon: BedDouble, description: "Multi-guest per room" },
   { name: "Allocator", href: "/allocator", icon: GripVertical, description: "Smart floor planning" },
+  { name: "Pax & Quotes", href: "/pax", icon: Calculator, description: "Dynamic pricing & PDF" },
+  { name: "RFP Dashboard", href: "/rfp", icon: FileText, description: "Compare vendor quotes" },
   { name: "Attrition", href: "/attrition", icon: AlertTriangle, description: "Yield protection rules" },
   { name: "Check-In", href: "/checkin", icon: QrCode, description: "QR scanner & bulk check-in" },
   { name: "Activity", href: "/activity", icon: Activity, description: "Full audit trail" },
   { name: "Feedback", href: "/feedback", icon: MessageSquare, description: "Guest reviews & sentiment" },
-  { name: "RFP Dashboard", href: "/rfp", icon: FileText, description: "Compare vendor quotes" },
-  { name: "Schedule", href: "/schedule", icon: CalendarDays, description: "Day-wise agenda & costing" },
-  { name: "Room Assign", href: "/rooms", icon: BedDouble, description: "Multi-guest per room" },
-  { name: "Pax & Quotes", href: "/pax", icon: Calculator, description: "Dynamic pricing & PDF" },
 ];
 
 export default function Sidebar() {

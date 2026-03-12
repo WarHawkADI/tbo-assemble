@@ -65,9 +65,10 @@ export default async function FeedbackPage({
       </div>
 
     <FeedbackClient
+      eventId={eventId}
       eventName={event.name}
       feedbackUrl={`/event/${event.slug}/feedback`}
-      feedbacks={feedbacks.map((f) => ({
+      initialFeedbacks={feedbacks.map((f) => ({
         id: f.id,
         guestName: f.guestName,
         rating: f.rating,
@@ -76,7 +77,7 @@ export default async function FeedbackPage({
         comment: f.comment,
         createdAt: f.createdAt.toISOString(),
       }))}
-      stats={{ avgRating, avgStay, avgEvent, total: feedbacks.length }}
+      initialStats={{ avgRating, avgStay, avgEvent, total: feedbacks.length }}
     />
     </div>
   );

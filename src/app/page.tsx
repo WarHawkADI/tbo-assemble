@@ -355,11 +355,13 @@ export default function Home() {
 
           <div className="text-center max-w-4xl mx-auto animate-fade-in">
             {/* Badge */}
-            <div className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/40 dark:to-amber-950/40 border border-orange-200/60 dark:border-orange-800/40 px-3.5 py-1 text-xs font-medium text-orange-700 dark:text-orange-400 mb-6 shadow-sm">
+            <div className="inline-flex flex-wrap items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/40 dark:to-amber-950/40 border border-orange-200/60 dark:border-orange-800/40 px-3.5 py-1.5 text-xs font-medium text-orange-600 dark:text-orange-400 mb-6 shadow-sm">
               <Zap className="h-3 w-3" />
               <span>VOYAGEHACK 3.0</span>
-              <span className="w-px h-3 bg-orange-200 dark:bg-orange-700" />
-              <span className="text-orange-600 dark:text-orange-300">Team IIITDards</span>
+              <span className="w-px h-3 bg-orange-300 dark:bg-orange-700" />
+              <span>Team IIITDards</span>
+              <span className="w-px h-3 bg-orange-300 dark:bg-orange-700" />
+              <span>Built for TBO</span>
             </div>
 
             {/* Heading with animated gradient */}
@@ -875,60 +877,60 @@ export default function Home() {
       </section>
 
       {/* ─── Footer ───────────────────────────────────── */}
-      <footer className="border-t border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 py-10">
+      <footer className="border-t border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 py-8 sm:py-10">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 mb-6 sm:mb-8">
             {/* Brand */}
-            <div className="md:col-span-2">
+            <div className="col-span-2">
               <div className="flex items-center gap-2.5 mb-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo.svg" alt="TBO Assemble" className="h-7 w-7" />
+                <img src="/logo.svg" alt="TBO Assemble" className="h-6 w-6 sm:h-7 sm:w-7" />
                 <div>
-                  <span className="font-semibold text-gray-900 dark:text-zinc-100 text-sm">TBO Assemble</span>
-                  <p className="text-[10px] text-gray-500 dark:text-zinc-500">Powered by TBO.com</p>
+                  <span className="font-semibold text-gray-900 dark:text-zinc-100 text-xs sm:text-sm">TBO Assemble</span>
+                  <p className="text-[9px] sm:text-[10px] text-gray-500 dark:text-zinc-500">Powered by TBO.com</p>
                 </div>
               </div>
-              <p className="text-xs text-gray-500 dark:text-zinc-500 max-w-sm leading-relaxed">
+              <p className="text-[11px] sm:text-xs text-gray-500 dark:text-zinc-500 max-w-sm leading-relaxed">
                 The Operating System for Group Travel — AI-powered hotel room block management for MICE events, destination weddings, and corporate retreats across India.
               </p>
             </div>
 
             {/* Quick Links */}
             <div>
-              <h4 className="text-xs font-semibold text-gray-900 dark:text-zinc-100 uppercase tracking-wider mb-3">Product</h4>
-              <div className="space-y-2">
+              <h4 className="text-[10px] sm:text-xs font-semibold text-gray-900 dark:text-zinc-100 uppercase tracking-wider mb-2 sm:mb-3">Product</h4>
+              <div className="space-y-1.5 sm:space-y-2">
                 {[
                   { href: "/dashboard", label: "Dashboard" },
                   { href: "/dashboard/onboarding", label: "Create Event" },
                   { href: "/dashboard/analytics", label: "Analytics" },
                   { href: "/dashboard/calendar", label: "Calendar View" },
                 ].map((l) => (
-                  <Link key={l.href} href={l.href} className="block text-xs text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-100 transition-colors">{l.label}</Link>
+                  <Link key={l.href} href={l.href} className="block text-[11px] sm:text-xs text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-100 transition-colors">{l.label}</Link>
                 ))}
               </div>
             </div>
 
             {/* Demo Events */}
             <div>
-              <h4 className="text-xs font-semibold text-gray-900 dark:text-zinc-100 uppercase tracking-wider mb-3">Demo Events</h4>
-              <div className="space-y-2">
+              <h4 className="text-[10px] sm:text-xs font-semibold text-gray-900 dark:text-zinc-100 uppercase tracking-wider mb-2 sm:mb-3">Demo Events</h4>
+              <div className="space-y-1.5 sm:space-y-2">
                 {[
                   { href: "/event/techconnect-summit-2026", label: "MICE Conference" },
                   { href: "/event/sharma-patel-wedding-2026", label: "Destination Wedding" },
                 ].map((l) => (
-                  <Link key={l.href} href={l.href} className="block text-xs text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-100 transition-colors">{l.label}</Link>
+                  <Link key={l.href} href={l.href} className="block text-[11px] sm:text-xs text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-100 transition-colors">{l.label}</Link>
                 ))}
               </div>
             </div>
           </div>
 
-          <div className="pt-6 border-t border-gray-100 dark:border-zinc-800 flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-gray-500 dark:text-zinc-500">
+          <div className="pt-4 sm:pt-6 border-t border-gray-100 dark:border-zinc-800 flex flex-col items-center gap-3 sm:gap-4 text-center">
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] sm:text-[11px] text-gray-500 dark:text-zinc-500">
               <span>&copy; {new Date().getFullYear()} TBO Tech Pvt. Ltd.</span>
-              <span className="hidden sm:inline w-px h-3 bg-gray-300 dark:bg-zinc-700" />
+              <span className="w-px h-3 bg-gray-300 dark:bg-zinc-700" />
               <span>Built with ❤️ by Team IIITDards for VOYAGEHACK 3.0</span>
             </div>
-            <div className="flex items-center gap-3 text-[10px] text-gray-400 dark:text-zinc-600">
+            <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[9px] sm:text-[10px] text-gray-400 dark:text-zinc-600">
               <span>Next.js 16</span>
               <span>·</span>
               <span>GPT-4o</span>

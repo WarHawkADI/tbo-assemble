@@ -3,11 +3,7 @@ import prisma from "@/lib/db";
 
 export async function POST() {
   try {
-    // Environment guard — prevent seeding in production
-    if (process.env.NODE_ENV === 'production') {
-      return NextResponse.json({ error: "Seed not available in production" }, { status: 403 });
-    }
-
+    // Seed allowed in all environments for demo purposes
     console.log("🌱 Seeding TBO Assemble database...\n");
 
     // Clean existing data (order matters for foreign keys)

@@ -120,45 +120,45 @@ export function EventOverviewActions({ slug, eventId, currentStatus = "active", 
       <Button
         variant="outline"
         size="sm"
-        className="gap-1.5"
+        className="gap-1.5 whitespace-nowrap"
         onClick={copyLink}
         aria-label="Copy event microsite link"
       >
         {copied ? (
           <>
-            <Check className="h-3.5 w-3.5 text-green-600" /> Copied!
+            <Check className="h-3.5 w-3.5 text-green-600" /> <span className="sr-only sm:not-sr-only">Copied!</span>
           </>
         ) : (
           <>
-            <Copy className="h-3.5 w-3.5" /> Copy Link
+            <Copy className="h-3.5 w-3.5" /> <span className="sr-only sm:not-sr-only">Copy Link</span>
           </>
         )}
       </Button>
       <Button
         variant="outline"
         size="sm"
-        className="gap-1.5"
+        className="gap-1.5 whitespace-nowrap"
         onClick={exportRoomingList}
         disabled={exporting}
         aria-label="Export rooming list as CSV"
       >
         <Download className="h-3.5 w-3.5" />
-        {exporting ? "Exporting..." : "Rooming List"}
+        <span className="sr-only sm:not-sr-only">{exporting ? "Exporting..." : "Rooming List"}</span>
       </Button>
       <Button
         variant="outline"
         size="sm"
-        className="gap-1.5"
+        className="gap-1.5 whitespace-nowrap"
         onClick={openQrBatchPrint}
         aria-label="Print all QR codes"
       >
-        <QrCode className="h-3.5 w-3.5" /> QR Batch
+        <QrCode className="h-3.5 w-3.5" /> <span className="sr-only sm:not-sr-only">QR Batch</span>
       </Button>
       {nextStatus && (
         <Button
           variant="outline"
           size="sm"
-          className={`gap-1.5 ${nextStatusColor}`}
+          className={`gap-1.5 whitespace-nowrap ${nextStatusColor}`}
           onClick={changeStatus}
           disabled={statusChanging}
           aria-label={`Change event status to ${nextStatus}`}
@@ -169,24 +169,24 @@ export function EventOverviewActions({ slug, eventId, currentStatus = "active", 
       <Button
         variant="outline"
         size="sm"
-        className="gap-1.5"
+        className="gap-1.5 whitespace-nowrap"
         onClick={cloneEvent}
         disabled={cloning}
         aria-label="Clone this event"
       >
         <CopyPlus className="h-3.5 w-3.5" />
-        {cloning ? "Cloning..." : "Clone"}
+        <span className="sr-only sm:not-sr-only">{cloning ? "Cloning..." : "Clone"}</span>
       </Button>
       <Button
         variant="outline"
         size="sm"
-        className="gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+        className="gap-1.5 whitespace-nowrap text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
         onClick={deleteEvent}
         disabled={deleting}
         aria-label="Delete this event"
       >
         <Trash2 className="h-3.5 w-3.5" />
-        {deleting ? "Deleting..." : "Delete"}
+        <span className="sr-only sm:not-sr-only">{deleting ? "Deleting..." : "Delete"}</span>
       </Button>
     </>
   );

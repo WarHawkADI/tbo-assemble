@@ -258,7 +258,7 @@ export default function AllocatorClient({ guests, roomBlocks, eventId }: Allocat
                 Unallocated Guests ({unallocatedGuests.length})
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-3 space-y-2 max-h-[600px] sm:max-h-[600px] max-h-[40vh] overflow-y-auto">
+            <CardContent className="p-3 space-y-2 max-h-[40vh] sm:max-h-[600px] overflow-y-auto">
               {selectedGuest && (
                 <div className="p-2 mb-2 bg-[#ff6b35]/10 border border-[#ff6b35]/30 rounded-lg text-xs text-[#ff6b35] dark:text-orange-400 lg:hidden">
                   <span className="font-medium">Tap a floor/wing below to allocate the selected guest</span>

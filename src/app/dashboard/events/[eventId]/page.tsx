@@ -65,10 +65,10 @@ export default async function EventOverviewPage({
       </Link>
 
       {/* Event Header */}
-      <div className="flex items-start justify-between mb-8">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100 tracking-tight">{event.name}</h1>
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-8">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-3 mb-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-zinc-100 tracking-tight">{event.name}</h1>
             <Badge variant={
               event.status === "active" ? "success"
               : event.status === "draft" ? "warning"
@@ -78,16 +78,17 @@ export default async function EventOverviewPage({
               {event.status}
             </Badge>
           </div>
-          <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 dark:text-zinc-400">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-zinc-400">
             <span className="flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5 text-gray-400 dark:text-zinc-500" /> {event.venue}, {event.location}
+              <MapPin className="h-3.5 w-3.5 text-gray-400 dark:text-zinc-500 flex-shrink-0" /> 
+              <span className="truncate">{event.venue}, {event.location}</span>
             </span>
             <span className="flex items-center gap-1.5">
-              <Calendar className="h-3.5 w-3.5 text-gray-400 dark:text-zinc-500" /> {formatDate(event.checkIn)} – {formatDate(event.checkOut)}
+              <Calendar className="h-3.5 w-3.5 text-gray-400 dark:text-zinc-500 flex-shrink-0" /> {formatDate(event.checkIn)} – {formatDate(event.checkOut)}
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <EventEditForm
             eventId={eventId}
             initialData={{

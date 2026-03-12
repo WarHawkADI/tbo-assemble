@@ -107,6 +107,8 @@ export function CheckinClient({ eventId, eventName }: CheckinClientProps) {
           ...prev.slice(0, 9),
         ]);
         setBookingId("");
+        // Refresh stats after successful check-in
+        fetchBookings();
       } else {
         setResult({
           success: false,

@@ -21,13 +21,13 @@ export default function FeedbackFormPage() {
   const [comment, setComment] = useState("");
 
   useEffect(() => {
-    fetch(`/api/events/search?q=${encodeURIComponent(params.slug)}`)
+    fetch(`/api/events/search?slug=${encodeURIComponent(params.slug)}`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load event");
         return res.json();
       })
       .then((data: { id: string; name: string; slug: string }[]) => {
-        const event = Array.isArray(data) ? data.find((e) => e.slug === params.slug) : null;
+        const event = Array.isArray(data) && data.length > 0 ? data[0] : null;
         if (event) {
           setEventId(event.id);
           setEventName(event.name);
@@ -39,7 +39,10 @@ export default function FeedbackFormPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !rating) return;
+    if (!name || !rating || !eventId) {
+      if (!eventId) alert("Event not found. Please try again.");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -57,6 +60,9 @@ export default function FeedbackFormPage() {
       });
       if (res.ok) {
         setSubmitted(true);
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to submit feedback");
       }
     } catch {
       alert("Failed to submit feedback");
@@ -69,6 +75,22 @@ export default function FeedbackFormPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 dark:from-zinc-950 dark:to-zinc-900">
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  if (!eventId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 dark:from-zinc-950 dark:to-zinc-900 px-4">
+        <div className="text-center max-w-md">
+          <p className="text-zinc-600 dark:text-zinc-400 mb-4">Event not found</p>
+          <Link
+            href="/"
+            className="inline-block px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors text-sm"
+          >
+            Go Home
+          </Link>
+        </div>
       </div>
     );
   }
@@ -197,8 +219,9 @@ export default function FeedbackFormPage() {
 
           <button
             type="submit"
-            disabled={submitting || !name || !rating}
+            disabled={submitting || !name || !rating || !eventId}
             className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+            aria-label="Submit Feedback"
           >
             {submitting ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -232,6 +255,7 @@ function StarInput({
           onMouseEnter={() => setHover(star)}
           onMouseLeave={() => setHover(0)}
           className="p-0.5 transition-transform hover:scale-110"
+          aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
         >
           <Star
             className={`w-8 h-8 ${

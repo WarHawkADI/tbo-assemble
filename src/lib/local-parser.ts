@@ -410,7 +410,9 @@ export async function extractTextFromExcel(buffer: Buffer): Promise<string> {
           textParts.push(paddedCells.filter(c => c !== "").join(" | "));
         } else if (cells.length === 2 && cells[0] && cells[1] && !isTable) {
           // Looks like a key:value pair (common in contract header sections)
-          textParts.push(`${cells[0]}: ${cells[1]}`);
+          // Strip trailing colon/spaces from key to avoid "Location:: value" duplication
+          const key = cells[0].replace(/[\s:–—]+$/, "").trim();
+          textParts.push(`${key}: ${cells[1]}`);
         } else if (cells.length >= 3 && nonEmptyCount >= 3) {
           // Multi-column data row - use pipe separator
           textParts.push(cells.filter(c => c !== "").join(" | "));
@@ -647,7 +649,8 @@ function extractLabeledFields(text: string): Record<string, string> {
     const match = line.match(/^([A-Za-z][A-Za-z\s/&()\-]{0,40}?)\s*[:–—]\s*(.+)$/);
     if (match) {
       const key = match[1].trim().toLowerCase();
-      const value = match[2].trim();
+      // Clean value: remove leading colons/spaces (Excel extraction artifact)
+      const value = match[2].trim().replace(/^[:–—\s]+/, "").trim();
       if (key.length >= 2 && value.length >= 1 && value.length <= 200) {
         if (!fields[key]) {
           fields[key] = value;
@@ -657,7 +660,8 @@ function extractLabeledFields(text: string): Record<string, string> {
       // Pattern 2: Match "Key:" on this line, value on next line
       const keyOnly = line.match(/^([A-Za-z][A-Za-z\s/&()\-]{0,40}?)\s*[:–—]\s*$/);
       if (keyOnly && i + 1 < lines.length) {
-        const nextLine = lines[i + 1].trim();
+        // Clean next line: strip leading colons/spaces (Excel artifact: "Location:\n: Mumbai")
+        const nextLine = lines[i + 1].trim().replace(/^[:–—\s]+/, "").trim();
         if (nextLine.length >= 1 && nextLine.length <= 200) {
           const key = keyOnly[1].trim().toLowerCase();
           if (key.length >= 2 && !fields[key]) {
@@ -2197,7 +2201,7 @@ function extractTotalAmount(text: string, fields: Record<string, string>): numbe
       if (suffix === "M") return Math.round(num * 1000000);
       if (suffix === "B") return Math.round(num * 1000000000);
     }
-    
+      
     // Extract FIRST number pattern (with optional decimals and commas)
     // Stop at +, %, "plus", "and", parentheses
     const match = str.match(/([\d,]+(?:\.\d{1,2})?)\s*(?:\+|%|\bplus\b|\band\b|\(|$)/i);

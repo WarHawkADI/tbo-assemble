@@ -49,7 +49,7 @@ export function DashboardHeader() {
   }, []);
 
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+    <div className="relative flex items-start sm:items-center justify-between gap-4 mb-8">
       <div className="pl-12 lg:pl-0">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-zinc-100 tracking-tight">Dashboard</h1>
         <p className="text-sm sm:text-base text-gray-500 dark:text-zinc-400 mt-1">
